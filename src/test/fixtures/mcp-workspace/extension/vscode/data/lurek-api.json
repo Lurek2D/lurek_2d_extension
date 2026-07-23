@@ -1,0 +1,17 @@
+{
+  "modules": [
+    {
+      "name": "render",
+      "functions": [
+        { "name": "draw", "fullPath": "lurek.render.draw" },
+        { "name": "clear", "fullPath": "lurek.render.clear" }
+      ]
+    },
+    {
+      "name": "audio",
+      "functions": [
+        { "name": "play", "fullPath": "lurek.audio.play" }
+      ]
+    }
+  ]
+}
