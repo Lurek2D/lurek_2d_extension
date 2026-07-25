@@ -5,10 +5,10 @@
 - Keep manifest wiring, generated data, and webview messaging consistent.
 
 ## Files
-- `src/commands/`: Commands and menus.
-- `src/providers/`: Sidebars, trees, autocomplete.
-- `src/editors/`: Custom editors and webview panels.
-- `data/`: Generated API data and schemas.
+- `src/commands/`, `src/providers/`: Commands, language tools, sidebars, and trees.
+- `src/editors/`, `src/panels/`, `src/tilemap/`: Webviews and custom editors.
+- `src/services/`, `src/mcp/`: Engine, RAG, debug, and MCP connections.
+- `data/`, `src/generated/`: Generated API and snippet data.
 
 ## Rules
 - Declare every user-facing action, setting, activation hook, and menu in `package.json`.

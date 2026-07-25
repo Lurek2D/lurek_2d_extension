@@ -5,7 +5,7 @@ import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, "..");
-const repoRoot = path.resolve(root, "..", "..");
+const repoRoot = path.resolve(root, "..");
 
 const sourcePath = path.join(repoRoot, "docs", "api", "lurek.lua");
 const outputPath = path.join(root, "data", "lurek.luacats");

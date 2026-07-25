@@ -1,0 +1,2060 @@
+{
+  "data: lk-data-pack-roundtrip": {
+    "prefix": "lk-data-pack-roundtrip",
+    "description": "Use for network packet construction and binary save-data blobs. pack serialises Lua values using a format string; unpack reverses it. crc32 detects corruption on receive before you call unpack.",
+    "scope": "lua",
+    "body": [
+      "local ${1:d} = lurek.binary",
+      "-- pack: uint16, float, null-terminated string",
+      "local payload  = d.pack(\">Hfz\", 1042, 3.14, \"hero\")",
+      "local crc      = d.crc32(payload)",
+      "print(\"packed bytes=\" .. #payload .. \"  crc=\" .. string.format(\"0x%08x\", crc))",
+      "",
+      "-- unpack (validate crc before this in real code):",
+      "local id, value, name = d.unpack(\">Hfz\", payload)",
+      "print(string.format(\"id=%d  value=%.2f  name=%s\", id, value, name))"
+    ]
+  },
+  "data: lk-data-pack-struct-batch": {
+    "prefix": "lk-data-pack-struct-batch",
+    "description": "Use to serialise a homogeneous array of fixed-size records (vectors, transform matrices, physics states) into one compact binary blob. getPackedSize verifies expected sizes without doing a full pack.",
+    "scope": "lua",
+    "body": [
+      "local ${1:d}   = lurek.binary",
+      "local FMT = \">fff\"   -- 3x big-endian float = 12 bytes",
+      "local vecs = { {1.0, 2.5, -3.0}, {0.5, 0.0, 1.5}, {-1.0, 4.2, 0.0} }",
+      "local blob = \"\"",
+      "for _, v in ipairs(vecs) do",
+      "    blob = blob .. d.pack(FMT, v[1], v[2], v[3])",
+      "end",
+      "local expected = d.getPackedSize(FMT, 0.0, 0.0, 0.0) * #vecs",
+      "print(\"blob=\" .. #blob .. \" bytes  expected=\" .. expected)"
+    ]
+  },
+  "data: lk-data-write-read": {
+    "prefix": "lk-data-write-read",
+    "description": "Use newWriter when building a binary payload incrementally (message framing, file chunk headers). Typed methods writeU8/writeU16LE/writeF32LE are safer than raw pack for variable-length record construction.",
+    "scope": "lua",
+    "body": [
+      "local ${1:d} = lurek.binary",
+      "local w = d.newWriter()",
+      "w:writeU8(0x7F)        -- version byte",
+      "w:writeU16LE(1024)     -- payload length hint",
+      "w:writeF32LE(3.14)     -- float field",
+      "w:writeString(\"hello\") -- pascal-style string",
+      "local written_len = w:len()",
+      "print(\"writer bytes=\" .. written_len)",
+      "",
+      "-- read back the first two fields with the format-string API:",
+      "local blob_str = w:toBytes()",
+      "local ver, length = d.read(\"Bu16le\", blob_str)",
+      "print(\"version=0x\" .. string.format(\"%02x\", ver) .. \"  length=\" .. length)"
+    ]
+  },
+  "data: lk-data-dataview-inspect": {
+    "prefix": "lk-data-dataview-inspect",
+    "description": "Use DataView to inspect a binary blob received from a file or network without copying it. Reads typed values at arbitrary byte offsets — useful for parsing file-format headers or network message envelopes.",
+    "scope": "lua",
+    "body": [
+      "local ${1:d} = lurek.binary",
+      "-- simulate a 12-byte header: magic(4), version(2), data_len(4)",
+      "local header = d.pack(\">IHI\", 0x4C524B32, 1, 4096)",
+      "local view   = d.newDataView(header)",
+      "print(\"view size=\" .. view:getSize() .. \" bytes\")",
+      "local magic   = view:getUInt32(0)",
+      "local version = view:getUInt16(4)",
+      "local dlen    = view:getUInt32(6)",
+      "print(string.format(\"magic=0x%08x  ver=%d  data_len=%d\", magic, version, dlen))"
+    ]
+  },
+  "data: lk-data-bytedata-cipher": {
+    "prefix": "lk-data-bytedata-cipher",
+    "description": "Use LByteData for in-place byte manipulation: simple ciphers, checksum accumulation, or binary patching. newByteData(str) copies bytes in; getByte/setByte let you iterate and modify individual bytes.",
+    "scope": "lua",
+    "body": [
+      "local ${1:d}   = lurek.binary",
+      "local KEY = 0x5A",
+      "local msg = \"secret_level_data\"",
+      "local bd  = d.newByteData(msg)",
+      "-- encrypt in place (XOR)",
+      "for i = 0, bd:getSize() - 1 do",
+      "    local b = bd:getByte(i)",
+      "    bd:setByte(i, bit.bxor(b, KEY))",
+      "end",
+      "print(\"encrypted length=\" .. bd:getSize())",
+      "-- decrypt back",
+      "for i = 0, bd:getSize() - 1 do",
+      "    local b = bd:getByte(i)",
+      "    bd:setByte(i, bit.bxor(b, KEY))",
+      "end",
+      "print(\"decrypted=\" .. bd:getString())"
+    ]
+  },
+  "data: lk-data-hash-asset-key": {
+    "prefix": "lk-data-hash-asset-key",
+    "description": "Use hash() to derive a compact, reproducible lookup key from an asset path or chunk content. Use \"sha256\" for integrity checks; \"xxh64\" for fast non-security cache keys (~4x faster).",
+    "scope": "lua",
+    "body": [
+      "local ${1:d}    = lurek.binary",
+      "local path = \"lurek_2d_content/games/mymod/map01.toml\"",
+      "local secure_key = d.hash(\"sha256\", path)",
+      "print(\"sha256=\" .. secure_key)",
+      "",
+      "local fast_key = d.hash(\"xxh64\", path)",
+      "print(\"xxh64=\" .. fast_key)"
+    ]
+  },
+  "data: lk-data-crc32-save": {
+    "prefix": "lk-data-crc32-save",
+    "description": "Use to protect save files and transmitted blobs from silent corruption. Append the CRC to the blob on write; recompute and compare on load before parsing the payload.",
+    "scope": "lua",
+    "body": [
+      "local ${1:d}    = lurek.binary",
+      "local ${1:s}    = lurek.serialize",
+      "local save = s.toToml({ player = { level = 5, gold = 300 } })",
+      "local crc  = d.crc32(save)",
+      "-- write: append CRC as 4 bytes",
+      "local safe_blob = save .. d.pack(\">I\", crc)",
+      "print(\"blob+crc=\" .. #safe_blob .. \" bytes\")",
+      "",
+      "-- on load: strip last 4 bytes and verify",
+      "local body        = safe_blob:sub(1, -5)",
+      "local stored_crc  = d.unpack(\">I\", safe_blob:sub(-4))",
+      "local valid       = d.crc32(body) == stored_crc",
+      "print(\"crc valid=\" .. tostring(valid))"
+    ]
+  },
+  "data: lk-data-base64": {
+    "prefix": "lk-data-base64",
+    "description": "Use to embed binary data in JSON strings, URLs, or text protocols. encode(\"base64\") produces the RFC 4648 string; decode(\"base64\") reverses it back to raw bytes.",
+    "scope": "lua",
+    "body": [
+      "local ${1:d}   = lurek.binary",
+      "local raw = d.pack(\">HH\", 0xDEAD, 0xBEEF)",
+      "local b64 = d.encode(\"base64\", raw)",
+      "print(\"base64=\" .. b64)",
+      "",
+      "local decoded = d.decode(\"base64\", b64)",
+      "local a, b   = d.unpack(\">HH\", decoded)",
+      "print(string.format(\"decoded=0x%04x 0x%04x\", a, b))"
+    ]
+  },
+  "data: lk-data-compress-save": {
+    "prefix": "lk-data-compress-save",
+    "description": "Use zlib compression on save blobs to reduce file-system write size. Level 6 balances speed and ratio for structured config data; verify round-trip before writing with the assert check below.",
+    "scope": "lua",
+    "body": [
+      "local ${1:d}   = lurek.binary",
+      "local ${1:s}   = lurek.serialize",
+      "local payload    = s.toToml({ world = { map = \"dungeon_01\", seed = 42 } })",
+      "local compressed = d.compress(\"zlib\", payload, 6)",
+      "print(string.format(\"original=%d  compressed=%d  ratio=%.2f\",",
+      "    #payload, #compressed, #compressed / #payload))",
+      "",
+      "-- decompress on load and verify:",
+      "local restored = d.decompress(\"zlib\", compressed)",
+      "assert(restored == payload, \"decompression mismatch\")",
+      "print(\"decompressed ok\")"
+    ]
+  },
+  "data: lk-data-compress-chunks": {
+    "prefix": "lk-data-compress-chunks",
+    "description": "Use compressChunks for streaming serialisation of large maps or level sections split into tiles. Pass a table of binary strings to avoid allocating one giant concatenated blob before compression.",
+    "scope": "lua",
+    "body": [
+      "local ${1:d} = lurek.binary",
+      "local sections = {",
+      "    d.pack(\">Hff\", 1, 100.0, 200.0),",
+      "    d.pack(\">Hff\", 2, 300.0,  50.0),",
+      "    d.pack(\">Hff\", 3, 450.0, 320.0),",
+      "}",
+      "local compressed = d.compressChunks(\"zlib\", sections, 3)",
+      "print(\"chunks compressed=\" .. #compressed .. \" bytes\")",
+      "",
+      "local restored = d.decompress(\"zlib\", compressed)",
+      "local section_id = d.unpack(\">H\", restored)",
+      "print(\"first section id=\" .. section_id)"
+    ]
+  },
+  "data: lk-data-serial-toml-load": {
+    "prefix": "lk-data-serial-toml-load",
+    "description": "Use at startup to load a TOML config, apply defaults for optional keys, and validate required fields. Fail fast with a clear error rather than silently propagating nil values into game logic.",
+    "scope": "lua",
+    "body": [
+      "local ${1:s} = lurek.serialize",
+      "local toml_str = [[",
+      "[audio]",
+      "volume = 0.8",
+      "[graphics]",
+      "resolution = \"1920x1080\"",
+      "]]",
+      "local cfg    = s.fromToml(toml_str)",
+      "local volume = (cfg.audio and cfg.audio.volume) or 0.75",
+      "local res    = (cfg.graphics and cfg.graphics.resolution) or \"1280x720\"",
+      "assert(type(volume) == \"number\" and volume >= 0 and volume <= 1, \"invalid volume\")",
+      "print(\"volume=\" .. volume .. \"  resolution=\" .. res)"
+    ]
+  },
+  "data: lk-data-serial-toml-patch": {
+    "prefix": "lk-data-serial-toml-patch",
+    "description": "Use to apply partial preference updates without rewriting the whole config. fromToml -> mutate the table -> toToml preserves all other keys and structure.",
+    "scope": "lua",
+    "body": [
+      "local ${1:s}   = lurek.serialize",
+      "local raw = [[",
+      "[player]",
+      "name = \"Hero\"",
+      "level = 1",
+      "[audio]",
+      "volume = 0.8",
+      "]]",
+      "local cfg = s.fromToml(raw)",
+      "cfg.player.level = cfg.player.level + 1",
+      "cfg.audio.volume = 0.6",
+      "",
+      "local updated = s.toToml(cfg)",
+      "print(updated)",
+      "-- write to disk: lurek.filesystem.write(\"save/options.toml\", updated)"
+    ]
+  },
+  "data: lk-data-serial-toml-manifest": {
+    "prefix": "lk-data-serial-toml-manifest",
+    "description": "Use to load and validate a game manifest (name, version, entry point) during boot. Centralise all schema checks here so the game loop never receives unvalidated manifest data.",
+    "scope": "lua",
+    "body": [
+      "local ${1:s} = lurek.serialize",
+      "local manifest_toml = [[",
+      "name    = \"Dungeon Explorer\"",
+      "version = \"1.2.0\"",
+      "entry   = \"main.lua\"",
+      "[requires]",
+      "engine = \"0.6\"",
+      "]]",
+      "local m = s.fromToml(manifest_toml)",
+      "assert(m.name,    \"manifest: missing name\")",
+      "assert(m.version, \"manifest: missing version\")",
+      "assert(m.entry,   \"manifest: missing entry\")",
+      "print(\"manifest ok: \" .. m.name .. \" v\" .. m.version)"
+    ]
+  },
+  "data: lk-data-ringbuffer-queue": {
+    "prefix": "lk-data-ringbuffer-queue",
+    "description": "Use as a bounded event queue for combat log messages, input history, or debug entries. The buffer overwrites the oldest entry when full — no manual eviction code required.",
+    "scope": "lua",
+    "body": [
+      "local ${1:d}   = lurek.binary",
+      "local buf = d.newRingBuffer(8)",
+      "",
+      "buf:push({ type = \"damage\", amount = 15 })",
+      "buf:push({ type = \"heal\",   amount = 5  })",
+      "buf:push({ type = \"damage\", amount = 30 })",
+      "print(\"len=\" .. buf:len() .. \"  cap=\" .. buf:capacity())",
+      "",
+      "while not buf:isEmpty() do",
+      "    local ev = buf:pop()",
+      "    if ev then",
+      "        print(\"event=\" .. ev.type .. \" amount=\" .. (ev.amount or 0))",
+      "    end",
+      "end"
+    ]
+  },
+  "data: lk-data-ringbuffer-rolling-avg": {
+    "prefix": "lk-data-ringbuffer-rolling-avg",
+    "description": "Use a ring buffer to compute a rolling average of frame times, damage-per-second, or sensor readings. toTable() yields the current window as a plain Lua array for sum/count without a separate counter.",
+    "scope": "lua",
+    "body": [
+      "local ${1:d}   = lurek.binary",
+      "local WIN = 30",
+      "local fps_buf = d.newRingBuffer(WIN)",
+      "",
+      "-- simulate 40 frames of frame-time data (ms)",
+      "for i = 1, 40 do",
+      "    fps_buf:push(16.0 + (i % 5) * 0.3)",
+      "end",
+      "",
+      "local samples = fps_buf:toTable()",
+      "local sum = 0",
+      "for _, v in ipairs(samples) do sum = sum + v end",
+      "local avg = sum / #samples",
+      "print(string.format(\"rolling avg frame_ms=%.2f  window=%d\", avg, #samples))"
+    ]
+  },
+  "data: lk-data-serial-msgpack-roundtrip": {
+    "prefix": "lk-data-serial-msgpack-roundtrip",
+    "description": "Use encodeMsgPack / decodeMsgPack for compact structured serialisation of game state snapshots passed between Lua VMs via Channel, or written as save slot blobs. Smaller than TOML; more type-safe than raw pack.",
+    "scope": "lua",
+    "body": [
+      "local ${1:s} = lurek.serialize",
+      "local state = {",
+      "    player = { name = \"Hero\", hp = 80, level = 5 },",
+      "    round  = 3,",
+      "    flags  = { has_sword = true, chest_open = false },",
+      "}",
+      "",
+      "local blob = s.encodeMsgPack(state)",
+      "print(\"msgpack bytes=\" .. #blob)",
+      "",
+      "local loaded = s.decodeMsgPack(blob)",
+      "if type(loaded) == \"table\" then",
+      "    local player = loaded.player",
+      "    if player then",
+      "        print(\"loaded name=\" .. tostring(player.name) .. \" hp=\" .. tostring(player.hp))",
+      "    end",
+      "end"
+    ]
+  },
+  "engine: lk-engine-version-guard": {
+    "prefix": "lk-engine-version-guard",
+    "description": "Use at the very top of main.lua to assert a minimum engine version before any other code runs. Prevents silent breakage when players ship or run an older binary without rebuilding.",
+    "scope": "lua",
+    "body": [
+      "local ${1:ver} = lurek.engine.getVersion()",
+      "assert(ver >= \"0.6\", \"lurek \" .. ver .. \" too old — need 0.6+\")",
+      "print(\"[boot] engine=\" .. ver",
+      "    .. \" platform=\" .. lurek.engine.platform()",
+      "    .. \" debug=\" .. tostring(lurek.engine.isDebug()))"
+    ]
+  },
+  "engine: lk-engine-platform-branch": {
+    "prefix": "lk-engine-platform-branch",
+    "description": "Use when you need platform-specific paths: keybind hint text, default save directories, cursor behaviour, or audio driver selection. Cache at module level — avoid calling platform() every frame.",
+    "scope": "lua",
+    "body": [
+      "local ${1:PLATFORM}   = lurek.engine.platform()",
+      "local IS_WINDOWS = PLATFORM == \"windows\"",
+      "local IS_LINUX   = PLATFORM == \"linux\"",
+      "local IS_MAC     = PLATFORM == \"macos\"",
+      "",
+      "if IS_WINDOWS then",
+      "    print(\"windows path: use AppData\")",
+      "elseif IS_LINUX then",
+      "    print(\"linux path: use ~/.local/share\")",
+      "elseif IS_MAC then",
+      "    print(\"mac path: use ~/Library/Application Support\")",
+      "end"
+    ]
+  },
+  "engine: lk-engine-debug-only-block": {
+    "prefix": "lk-engine-debug-only-block",
+    "description": "Use to gate ALL expensive debug overlays, cheat commands, and verbose assertion dumps. In release, isDebug() returns false so this block is skipped entirely — no runtime cost.",
+    "scope": "lua",
+    "body": [
+      "if lurek.engine.isDebug() then",
+      "    -- god mode keybind, profiler HUD, overlay text, verbose log",
+      "    print(\"[debug] diagnostics active, ver=\" .. lurek.engine.getVersion())",
+      "end",
+      "-- ${1:MODULE}: lurek"
+    ]
+  },
+  "engine: lk-engine-fps-warn": {
+    "prefix": "lk-engine-fps-warn",
+    "description": "Use in update() to detect sustained low-FPS before players notice stutter. Derives the warning threshold from the actual frame budget so the check stays valid across 30 / 60 / 120 FPS targets.",
+    "scope": "lua",
+    "body": [
+      "local ${1:fps}      = lurek.engine.fps()",
+      "local budget_ms = lurek.engine.getFrameBudget()",
+      "local warn_fps  = (1000 / budget_ms) * 0.75   -- 75 % of target FPS",
+      "if fps < warn_fps then",
+      "    print(string.format(\"[perf] fps=%.1f below warning=%.1f\", fps, warn_fps))",
+      "end"
+    ]
+  },
+  "engine: lk-engine-even-odd-stagger": {
+    "prefix": "lk-engine-even-odd-stagger",
+    "description": "Use to split expensive per-frame work across alternating frames (AI ticks on even, particle updates on odd) without extra boolean state variables. frameCount() is the canonical engine clock — safe to use in save data.",
+    "scope": "lua",
+    "body": [
+      "local ${1:frame} = lurek.engine.frameCount()",
+      "if frame % 2 == 0 then",
+      "    -- AI tick, physics LOD, ambient sound probe",
+      "    print(\"even frame \" .. frame .. \": heavy systems\")",
+      "else",
+      "    -- particle update, UI animation tick",
+      "    print(\"odd frame \" .. frame .. \": light systems\")",
+      "end"
+    ]
+  },
+  "engine: lk-engine-uptime-stamp": {
+    "prefix": "lk-engine-uptime-stamp",
+    "description": "Use for session analytics, auto-save triggers, and achievement timers. uptime() is wall-clock seconds since engine start — combine with frameCount() to attach a reproducible stamp to save records and bug reports.",
+    "scope": "lua",
+    "body": [
+      "local ${1:uptime_s} = lurek.engine.uptime()",
+      "local minutes  = math.floor(uptime_s / 60)",
+      "local seconds  = math.floor(uptime_s % 60)",
+      "local stamp    = string.format(\"t=%dm%02ds  f=%d\", minutes, seconds, lurek.engine.frameCount())",
+      "print(\"[session] \" .. stamp)"
+    ]
+  },
+  "engine: lk-engine-fixed-dt": {
+    "prefix": "lk-engine-fixed-dt",
+    "description": "Use for physics / simulation that needs deterministic fixed steps. Drives the accumulator loop with uptime delta; clamps the spiral-of-death so a slow machine can't accumulate hundreds of ticks on one spike frame.",
+    "scope": "lua",
+    "body": [
+      "local ${1:FIXED_DT}  = 1 / 60",
+      "local _accum    = 0",
+      "local _last_t   = lurek.engine.uptime()",
+      "",
+      "-- call this each frame from your update() callback:",
+      "local function tick_fixed()",
+      "    local now   = lurek.engine.uptime()",
+      "    local delta = math.min(now - _last_t, 0.25)  -- spiral-of-death cap = 250 ms",
+      "    _last_t     = now",
+      "    _accum      = _accum + delta",
+      "    while _accum >= FIXED_DT do",
+      "        -- fixed_update(FIXED_DT)",
+      "        _accum = _accum - FIXED_DT",
+      "    end",
+      "    return _accum / FIXED_DT  -- interpolation alpha [0..1)",
+      "end",
+      "local alpha = tick_fixed()",
+      "print(\"fixed tick alpha=\" .. string.format(\"%.3f\", alpha))"
+    ]
+  },
+  "engine: lk-engine-config-hotreload": {
+    "prefix": "lk-engine-config-hotreload",
+    "description": "Use when supporting hot-reload of conf.toml at runtime. Compare the config revision each frame; if it changed, re-read and re-apply settings without restarting the game.",
+    "scope": "lua",
+    "body": [
+      "local ${1:_last_rev} = lurek.engine.getConfigRevision()",
+      "",
+      "local function check_config_reload()",
+      "    local rev = lurek.engine.getConfigRevision()",
+      "    if rev ~= _last_rev then",
+      "        _last_rev = rev",
+      "        print(\"[config] revision=\" .. rev .. \" — reloading settings\")",
+      "        -- re-apply volume, keybinds, resolution, locale…",
+      "    end",
+      "end",
+      "check_config_reload()"
+    ]
+  },
+  "engine: lk-engine-memory-hud": {
+    "prefix": "lk-engine-memory-hud",
+    "description": "Use for a single-line memory HUD. Combines lua_kb + resource stats into one formatted string suitable for lurek.render.print() in a debug overlay.",
+    "scope": "lua",
+    "body": [
+      "local ${1:mem}   = lurek.engine.memoryUsage()",
+      "local stats = lurek.engine.getResourceStats()",
+      "local res_mb    = stats.total_bytes  / (1024 * 1024)",
+      "local budget_mb = stats.budget_bytes / (1024 * 1024)",
+      "local hud = string.format(\"lua=%d KB  res=%.1f/%.0f MB\", mem.lua_kb, res_mb, budget_mb)",
+      "lurek.render.setColor(0.9, 0.9, 0.9, 0.8)",
+      "lurek.render.print(hud, 8, 8)",
+      "lurek.render.setColor(1, 1, 1, 1)"
+    ]
+  },
+  "engine: lk-engine-resource-budget-init": {
+    "prefix": "lk-engine-resource-budget-init",
+    "description": "Use once in main.lua or level_init() to set the memory ceiling for all loaded assets. Prevents unbounded accumulation during level streaming. Pick a value ≤ 50 % of target device RAM to leave headroom for OS + GPU.",
+    "scope": "lua",
+    "body": [
+      "local ${1:MB} = 1024 * 1024",
+      "lurek.engine.setResourceBudget(128 * MB)",
+      "local s = lurek.engine.getResourceStats()",
+      "print(string.format(\"[init] resource budget=%.0f MB total=%.1f MB\",",
+      "    s.budget_bytes / MB, s.total_bytes / MB))"
+    ]
+  },
+  "engine: lk-engine-pressure-abort-load": {
+    "prefix": "lk-engine-pressure-abort-load",
+    "description": "Use before streaming a large asset batch (level, cutscene). Abort the load early and trigger a cache purge if utilisation is already above 85 %, rather than crashing mid-load with an OOM.",
+    "scope": "lua",
+    "body": [
+      "local ${1:stats} = lurek.engine.getResourceStats()",
+      "local ratio = (stats.budget_bytes > 0) and (stats.total_bytes / stats.budget_bytes) or 0",
+      "if ratio > 0.85 then",
+      "    error(string.format(\"resource pressure %.0f%% — purge cache before loading level\", ratio * 100))",
+      "end",
+      "print(string.format(\"[load] pressure=%.0f%%, ok to proceed\", ratio * 100))"
+    ]
+  },
+  "engine: lk-engine-frame-profile": {
+    "prefix": "lk-engine-frame-profile",
+    "description": "Use during optimisation sprints to print a structured per-phase breakdown each frame. More actionable than fps() alone — shows which phase (lua, render, audio) is the bottleneck.",
+    "scope": "lua",
+    "body": [
+      "local ${1:prof} = lurek.engine.getFrameProfile()",
+      "print(string.format(",
+      "    \"[prof] total=%.2fms  budget=%dms  fps=%.1f\",",
+      "    prof.app_frame_total_ms,",
+      "    lurek.engine.getFrameBudget(),",
+      "    lurek.engine.fps()",
+      "))"
+    ]
+  },
+  "engine: lk-engine-profile-overlay": {
+    "prefix": "lk-engine-profile-overlay",
+    "description": "Use as a single-line debug overlay. getFrameProfileText() returns a pre-formatted multi-line string — pass it straight to render.print().",
+    "scope": "lua",
+    "body": [
+      "if lurek.engine.isDebug() then",
+      "    lurek.render.setColor(0.9, 0.9, 0.9, 0.85)",
+      "    lurek.render.print(lurek.engine.getFrameProfileText(), 8, 8)",
+      "    lurek.render.setColor(1, 1, 1, 1)",
+      "end",
+      "-- ${1:MODULE}: lurek"
+    ]
+  },
+  "engine: lk-engine-spike-log": {
+    "prefix": "lk-engine-spike-log",
+    "description": "Use to detect and log individual spike frames without flooding the console. Only prints profile text when the frame exceeds 2× the configured budget.",
+    "scope": "lua",
+    "body": [
+      "local ${1:budget_ms} = lurek.engine.getFrameBudget()",
+      "local prof      = lurek.engine.getFrameProfile()",
+      "if prof.app_frame_total_ms > budget_ms * 2 then",
+      "    print(string.format(\"[spike] f=%d  %.1fms (budget=%dms)\",",
+      "        lurek.engine.frameCount(), prof.app_frame_total_ms, budget_ms))",
+      "    print(lurek.engine.getFrameProfileText())",
+      "end"
+    ]
+  },
+  "engine: lk-engine-boot-record": {
+    "prefix": "lk-engine-boot-record",
+    "description": "Use as the very first call in main.lua. Emits one reproducible boot record that correlates crash reports with the exact binary, platform, and memory state at launch.",
+    "scope": "lua",
+    "body": [
+      "local function print_boot_record()",
+      "    local ${1:mem}   = lurek.engine.memoryUsage()",
+      "    local stats = lurek.engine.getResourceStats()",
+      "    print(string.format(",
+      "        \"[boot] ver=%s  platform=%s  debug=%s  budget_ms=%d  lua_kb=%d  res_budget_mb=%.0f\",",
+      "        lurek.engine.getVersion(),",
+      "        lurek.engine.platform(),",
+      "        tostring(lurek.engine.isDebug()),",
+      "        lurek.engine.getFrameBudget(),",
+      "        mem.lua_kb,",
+      "        stats.budget_bytes / (1024 * 1024)",
+      "    ))",
+      "end",
+      "print_boot_record()"
+    ]
+  },
+  "input: lk-input-kb-move": {
+    "prefix": "lk-input-kb-move",
+    "description": "Use in update() to produce a normalised 2-axis movement vector from WASD + arrow keys. Works for top-down, platformer, and grid games. Result is clamped to [-1, 1] so diagonal speed does not exceed 1.",
+    "scope": "lua",
+    "body": [
+      "local ${1:kb} = lurek.input.keyboard",
+      "local dx = (kb.isDown(\"d\", \"right\") and 1 or 0) - (kb.isDown(\"a\", \"left\") and 1 or 0)",
+      "local dy = (kb.isDown(\"s\", \"down\")  and 1 or 0) - (kb.isDown(\"w\", \"up\")   and 1 or 0)",
+      "local len = math.sqrt(dx * dx + dy * dy)",
+      "if len > 0 then dx, dy = dx / len, dy / len end",
+      "print(\"move axis dx=\" .. dx .. \" dy=\" .. dy)"
+    ]
+  },
+  "input: lk-input-kb-modifier": {
+    "prefix": "lk-input-kb-modifier",
+    "description": "Use to detect hotkeys that require a modifier (Ctrl+S save, Shift+Tab, Alt+F4 intercept). Combine isDown for the primary key with isModifierActive for the modifier — avoids false positives from key order.",
+    "scope": "lua",
+    "body": [
+      "local ${1:kb} = lurek.input.keyboard",
+      "local ctrl_s  = kb.isModifierActive(\"ctrl\")  and kb.isDown(\"s\")",
+      "local shift_z = kb.isModifierActive(\"shift\") and kb.isDown(\"z\")",
+      "if ctrl_s  then print(\"save triggered\") end",
+      "if shift_z then print(\"redo triggered\") end"
+    ]
+  },
+  "input: lk-input-kb-text": {
+    "prefix": "lk-input-kb-text",
+    "description": "Use when opening a chat box, search field, or rename dialog. Enables OS text-input mode (IME, dead keys, key repeat) and disables it on close. Pair with setKeyRepeat so held backspace deletes characters continuously.",
+    "scope": "lua",
+    "body": [
+      "local ${1:kb} = lurek.input.keyboard",
+      "-- when dialog opens:",
+      "kb.setTextInput(true)",
+      "kb.setKeyRepeat(true)",
+      "print(\"text input active: \" .. tostring(kb.hasTextInput()))",
+      "",
+      "-- when dialog closes:",
+      "-- kb.setTextInput(false)",
+      "-- kb.setKeyRepeat(false)"
+    ]
+  },
+  "input: lk-input-kb-scancode-hint": {
+    "prefix": "lk-input-kb-scancode-hint",
+    "description": "Use to show localised key names in tooltip / rebind UI. Scancode gives physical position; getKeyFromScancode gives the printable character on the player's actual keyboard layout (AZERTY, QWERTZ, etc.).",
+    "scope": "lua",
+    "body": [
+      "local ${1:kb} = lurek.input.keyboard",
+      "local layouts = { \"w\", \"a\", \"s\", \"d\" }",
+      "for _, sc in ipairs(layouts) do",
+      "    local key = kb.getKeyFromScancode(sc)",
+      "    print(\"scancode=\" .. sc .. \"  key='\" .. key .. \"'\")",
+      "end"
+    ]
+  },
+  "input: lk-input-mouse-world": {
+    "prefix": "lk-input-mouse-world",
+    "description": "Use to map screen-space mouse position to world-space coordinates by subtracting the camera offset. Foundation for click-to-move, hover highlight, and drag-select in top-down games.",
+    "scope": "lua",
+    "body": [
+      "local mx, my = lurek.input.mouse.getPosition()",
+      "-- subtract camera offset (replace with your cam_x / cam_y variables)",
+      "local cam_x, cam_y = 0, 0",
+      "local wx, wy = mx + cam_x, my + cam_y",
+      "local ${1:left_click}  = lurek.input.mouse.isDown(1)",
+      "local right_click = lurek.input.mouse.isDown(2)",
+      "print(string.format(\"screen(%d,%d) world(%d,%d) L=%s R=%s\",",
+      "    mx, my, wx, wy, tostring(left_click), tostring(right_click)))"
+    ]
+  },
+  "input: lk-input-mouse-zoom": {
+    "prefix": "lk-input-mouse-zoom",
+    "description": "Use for scroll-wheel zoom in map or level-editor views. Accumulates wheel delta and clamps to a [min, max] range each frame to prevent jump flicker.",
+    "scope": "lua",
+    "body": [
+      "local ${1:ZOOM_SPEED} = 0.1",
+      "local zoom_min   = 0.25",
+      "local zoom_max   = 4.0",
+      "local zoom = 1.0",
+      "",
+      "local wheel = lurek.input.mouse.getWheelDelta()",
+      "zoom = math.max(zoom_min, math.min(zoom_max, zoom + wheel * ZOOM_SPEED))",
+      "print(\"zoom=\" .. string.format(\"%.2f\", zoom))"
+    ]
+  },
+  "input: lk-input-mouse-cursor-ctx": {
+    "prefix": "lk-input-mouse-cursor-ctx",
+    "description": "Use to change the cursor shape based on context: arrow when idle, hand when hovering a button, crosshair in targeting mode. Uses system cursors — no image files required.",
+    "scope": "lua",
+    "body": [
+      "local ${1:mouse} = lurek.input.mouse",
+      "-- preload once (expensive)",
+      "local cursor_arrow  = mouse.getSystemCursor(\"arrow\")",
+      "local cursor_hand   = mouse.getSystemCursor(\"hand\")",
+      "local cursor_target = mouse.getSystemCursor(\"crosshair\")",
+      "",
+      "-- each frame: swap based on state",
+      "local hovering_button = false  -- replace with your hover logic",
+      "if hovering_button then",
+      "    mouse.setCursor(cursor_hand)",
+      "else",
+      "    mouse.setCursor(cursor_arrow)",
+      "end",
+      "print(\"cursor context applied\")",
+      "_ = cursor_target"
+    ]
+  },
+  "input: lk-input-mouse-fps-look": {
+    "prefix": "lk-input-mouse-fps-look",
+    "description": "Use for first-person or third-person camera rotation. Relative mode disables OS cursor movement and reports raw deltas — essential for smooth 360° look. Disable it when showing a pause menu.",
+    "scope": "lua",
+    "body": [
+      "local ${1:mouse} = lurek.input.mouse",
+      "-- when entering FPS look:",
+      "mouse.setRelativeMode(true)",
+      "mouse.setVisible(false)",
+      "mouse.setGrabbed(true)",
+      "print(\"fps look mode active, relative=\" .. tostring(mouse.getRelativeMode()))",
+      "",
+      "-- in your look update: read delta (engine delivers via events)",
+      "-- when exiting:",
+      "-- mouse.setRelativeMode(false)",
+      "-- mouse.setVisible(true)",
+      "-- mouse.setGrabbed(false)"
+    ]
+  },
+  "input: lk-input-mouse-drag-box": {
+    "prefix": "lk-input-mouse-drag-box",
+    "description": "Use for rubber-band selection in strategy or editor UIs. Tracks drag start on left-button press and computes the selection rectangle while held.",
+    "scope": "lua",
+    "body": [
+      "local ${1:mouse} = lurek.input.mouse",
+      "local drag_start_x, drag_start_y",
+      "local drag_active = false",
+      "",
+      "if mouse.isDown(1) and not drag_active then",
+      "    drag_start_x, drag_start_y = mouse.getPosition()",
+      "    drag_active = true",
+      "end",
+      "",
+      "if drag_active and mouse.isDown(1) then",
+      "    local cx, cy = mouse.getPosition()",
+      "    local rx = math.min(drag_start_x or cx, cx)",
+      "    local ry = math.min(drag_start_y or cy, cy)",
+      "    local rw = math.abs(cx - (drag_start_x or cx))",
+      "    local rh = math.abs(cy - (drag_start_y or cy))",
+      "    print(string.format(\"drag rect=%.0f,%.0f %.0fx%.0f\", rx, ry, rw, rh))",
+      "end",
+      "",
+      "if not mouse.isDown(1) then",
+      "    drag_active = false",
+      "end"
+    ]
+  },
+  "input: lk-input-gp-deadzone": {
+    "prefix": "lk-input-gp-deadzone",
+    "description": "Use to read left analogue stick with a circular deadzone. Raw axis values drift near 0 on all controllers — apply deadzone before using for movement to prevent ghost input.",
+    "scope": "lua",
+    "body": [
+      "local ${1:gp}      = lurek.input.gamepad",
+      "local pad     = 1",
+      "local raw_x   = gp.getAxis(pad, 1)",
+      "local raw_y   = gp.getAxis(pad, 2)",
+      "local len     = math.sqrt(raw_x * raw_x + raw_y * raw_y)",
+      "local deadzone = 0.15",
+      "local ax, ay = 0, 0",
+      "if len > deadzone then",
+      "    local scale = (len - deadzone) / (1 - deadzone)",
+      "    ax = (raw_x / len) * scale",
+      "    ay = (raw_y / len) * scale",
+      "end",
+      "print(string.format(\"stick ax=%.3f ay=%.3f\", ax, ay))"
+    ]
+  },
+  "input: lk-input-gp-button-edge": {
+    "prefix": "lk-input-gp-button-edge",
+    "description": "Use to detect single-frame button press and release edges for jump, attack, and UI confirm/cancel. wasPressed fires only on the first frame the button goes down; wasReleased fires only on the frame it goes up.",
+    "scope": "lua",
+    "body": [
+      "local ${1:gp}  = lurek.input.gamepad",
+      "local pad = 1",
+      "-- Button indices: 1=A/Cross, 2=B/Circle, 3=X/Square, 4=Y/Triangle (SDL mapping)",
+      "if gp.wasPressed(pad, 1) then",
+      "    print(\"jump pressed\")",
+      "end",
+      "if gp.wasReleased(pad, 1) then",
+      "    print(\"jump released (held time logic here)\")",
+      "end",
+      "if gp.isDown(pad, 5) then",
+      "    print(\"LB held (charge attack)\")",
+      "end"
+    ]
+  },
+  "input: lk-input-gp-dpad": {
+    "prefix": "lk-input-gp-dpad",
+    "description": "Use for menu navigation with D-pad. virtualDpad converts left-stick x/y plus deadzone threshold into a discrete direction string — works for both real D-pad (hat) and analogue stick input in the same code path.",
+    "scope": "lua",
+    "body": [
+      "local ${1:gp}  = lurek.input.gamepad",
+      "local pad = 1",
+      "local sx  = gp.getAxis(pad, 1)",
+      "local sy  = gp.getAxis(pad, 2)",
+      "local dpad = gp.virtualDpad(sx, sy, 0.5)   -- threshold=0.5 avoids accidental triggers",
+      "",
+      "if dpad.up    then print(\"menu: up\")    end",
+      "if dpad.down  then print(\"menu: down\")  end",
+      "if dpad.left  then print(\"menu: left\")  end",
+      "if dpad.right then print(\"menu: right\") end",
+      "print(\"direction=\" .. dpad.direction)"
+    ]
+  },
+  "input: lk-input-gp-hat": {
+    "prefix": "lk-input-gp-hat",
+    "description": "Use when the game needs raw hat/D-pad state (not stick emulation) for fighting-game inputs or precise direction detection. getHat returns a direction string: \"c\", \"u\", \"d\", \"l\", \"r\", \"ul\", \"ur\", \"dl\", \"dr\".",
+    "scope": "lua",
+    "body": [
+      "local ${1:gp}  = lurek.input.gamepad",
+      "local pad = 1",
+      "local hat = gp.getHat(pad, 1)",
+      "print(\"hat direction=\" .. hat)",
+      "if hat == \"u\" or hat == \"ul\" or hat == \"ur\" then",
+      "    print(\"up input\")",
+      "elseif hat == \"d\" or hat == \"dl\" or hat == \"dr\" then",
+      "    print(\"down input\")",
+      "end"
+    ]
+  },
+  "input: lk-input-gp-connect": {
+    "prefix": "lk-input-gp-connect",
+    "description": "Use to detect controller hot-plug and show a UI notification. wasConnected/wasDisconnected are single-frame edge signals — check all slots each frame to handle multi-controller sessions.",
+    "scope": "lua",
+    "body": [
+      "local ${1:gp} = lurek.input.gamepad",
+      "for pad = 1, gp.getCount() do",
+      "    if gp.wasConnected(pad) then",
+      "        print(\"gamepad \" .. pad .. \" connected: \" .. gp.getName(pad))",
+      "    end",
+      "    if gp.wasDisconnected(pad) then",
+      "        print(\"gamepad \" .. pad .. \" disconnected\")",
+      "    end",
+      "end"
+    ]
+  },
+  "input: lk-input-gp-vibrate": {
+    "prefix": "lk-input-gp-vibrate",
+    "description": "Use for damage-feedback or hit-confirmation rumble. Checks vibration support before calling to avoid silent no-ops on hardware that lacks motors. Pass different low/high values to distinguish damage type (heavy vs light).",
+    "scope": "lua",
+    "body": [
+      "local ${1:gp}  = lurek.input.gamepad",
+      "local pad = 1",
+      "if gp.isConnected(pad) and gp.isVibrationSupported(pad) then",
+      "    -- heavy hit: strong low-frequency + light high-frequency, 300 ms",
+      "    gp.vibrate(pad, 0.8, 0.3, 300)",
+      "    print(\"vibrate: hit feedback sent to pad \" .. pad)",
+      "end"
+    ]
+  },
+  "input: lk-input-gp-mapping": {
+    "prefix": "lk-input-gp-mapping",
+    "description": "Use on startup to load a community controller mapping database so obscure gamepads are recognised as standard buttons/axes. The file is typically bundled with your game as content/gamecontrollerdb.txt.",
+    "scope": "lua",
+    "body": [
+      "local ${1:gp}       = lurek.input.gamepad",
+      "local db_path  = \"content/gamecontrollerdb.txt\"",
+      "gp.loadGamepadMappings(db_path)",
+      "print(\"gamepad mappings loaded from \" .. db_path)",
+      "for pad = 1, gp.getCount() do",
+      "    if gp.isConnected(pad) then",
+      "        print(\"  pad \" .. pad .. \" '\" .. gp.getName(pad) .. \"' guid=\" .. gp.getGUID(pad))",
+      "    end",
+      "end"
+    ]
+  },
+  "input: lk-input-gp-full-poll": {
+    "prefix": "lk-input-gp-full-poll",
+    "description": "Use for a debug diagnostics panel that shows all axes and buttons for the first connected gamepad. Useful when verifying new controller mappings.",
+    "scope": "lua",
+    "body": [
+      "local ${1:gp}  = lurek.input.gamepad",
+      "local pad = 1",
+      "if gp.isConnected(pad) then",
+      "    print(\"=== gamepad \" .. pad .. \" \" .. gp.getName(pad) .. \" ===\")",
+      "    for a = 1, gp.getAxisCount(pad) do",
+      "        print(string.format(\"  axis[%d]=%.3f\", a, gp.getAxis(pad, a)))",
+      "    end",
+      "    for b = 1, gp.getButtonCount(pad) do",
+      "        if gp.isDown(pad, b) then",
+      "            print(\"  btn[\" .. b .. \"] HELD\")",
+      "        end",
+      "    end",
+      "end"
+    ]
+  },
+  "math: lk-math-smooth-follow": {
+    "prefix": "lk-math-smooth-follow",
+    "description": "Use for camera tracking, health-bar animation, and any value that should ease toward a target without overshooting. smoothstep gives a natural velocity curve; speed is controlled by the lerp factor.",
+    "scope": "lua",
+    "body": [
+      "local ${1:m}       = lurek.math",
+      "local current = 0",
+      "local target  = 100",
+      "local speed   = 0.1   -- fraction per frame (higher = faster)",
+      "",
+      "-- each frame:",
+      "local t       = m.smoothstep(0, 1, speed)",
+      "current       = m.lerp(current, target, t)",
+      "print(\"current=\" .. string.format(\"%.2f\", current))"
+    ]
+  },
+  "math: lk-math-progress-remap": {
+    "prefix": "lk-math-progress-remap",
+    "description": "Use to drive a progress window animation (e.g. show progress bar only between t=0.2 and t=0.8 of a full cutscene). remap + clamp extracts a sub-range of a normalised [0..1] timeline into its own [0..1].",
+    "scope": "lua",
+    "body": [
+      "local ${1:m}        = lurek.math",
+      "local total_t  = 1.0   -- full timeline length (seconds or normalised)",
+      "local seg_start = 0.2",
+      "local seg_end   = 0.8",
+      "local t        = 0.5   -- current position in [0..1]",
+      "",
+      "local sub_t = m.clamp(m.remap(t, seg_start, seg_end, 0, 1), 0, 1)",
+      "print(\"sub progress=\" .. string.format(\"%.3f\", sub_t))"
+    ]
+  },
+  "math: lk-math-aim-distance": {
+    "prefix": "lk-math-aim-distance",
+    "description": "Use to compute the angle and distance between an actor and a target for aiming, aggro-range checks, and steering. angleBetween gives the heading in radians; distanceSq avoids the sqrt for range-only comparisons.",
+    "scope": "lua",
+    "body": [
+      "local ${1:m}     = lurek.math",
+      "local px, py = 100, 200    -- player position",
+      "local tx, ty = 350, 180    -- target position",
+      "local angle  = m.angleBetween(px, py, tx, ty)",
+      "local dist   = m.distance(px, py, tx, ty)",
+      "local dist2  = m.distanceSq(px, py, tx, ty)",
+      "local aggro  = 200",
+      "print(string.format(\"angle=%.2frad  dist=%.1f  in_aggro=%s\",",
+      "    angle, dist, tostring(dist2 < aggro * aggro)))"
+    ]
+  },
+  "math: lk-math-inv-lerp-opacity": {
+    "prefix": "lk-math-inv-lerp-opacity",
+    "description": "Use to compute a fade-in opacity from a distance or any ranged value. inverseLerp turns the raw measurement back into [0..1], then clamp prevents negative or >1 values at the extremes.",
+    "scope": "lua",
+    "body": [
+      "local ${1:m}    = lurek.math",
+      "local dist      = 150      -- current distance to camera or trigger",
+      "local fade_near = 80       -- fully visible at or below this distance",
+      "local fade_far  = 200      -- fully invisible at or above this distance",
+      "",
+      "local opacity = m.clamp(m.inverseLerp(fade_far, fade_near, dist), 0, 1)",
+      "print(\"opacity=\" .. string.format(\"%.3f\", opacity))"
+    ]
+  },
+  "math: lk-math-sign-bounce": {
+    "prefix": "lk-math-sign-bounce",
+    "description": "Use for wall-bounce logic, score differentials, and left/right split. sign() returns -1, 0, or +1 — multiply by a speed to flip velocity on impact without a manual if/else branch.",
+    "scope": "lua",
+    "body": [
+      "local ${1:m}   = lurek.math",
+      "local vx  = 3.5   -- current x velocity",
+      "local wall_x = 400",
+      "local px_after = wall_x + 5   -- position just past the wall",
+      "",
+      "-- flip velocity on the frame the object crosses the boundary",
+      "if m.sign(px_after - wall_x) ~= m.sign((px_after - vx) - wall_x) then",
+      "    vx = -vx",
+      "end",
+      "print(\"vx after bounce=\" .. vx)"
+    ]
+  },
+  "math: lk-math-closest-point-path": {
+    "prefix": "lk-math-closest-point-path",
+    "description": "Use to snap an entity to the nearest point on a road, rail, or patrol path defined as polyline segments. Iterate segments and keep the closest result from closestPointOnSegment.",
+    "scope": "lua",
+    "body": [
+      "local ${1:m} = lurek.math",
+      "local path = { {0,0}, {100,50}, {200,80}, {300,30} }",
+      "local px, py = 150, 120   -- query point",
+      "",
+      "local best_dist = math.huge",
+      "local snap_x, snap_y = px, py",
+      "for i = 1, #path - 1 do",
+      "    local ax, ay = path[i][1],   path[i][2]",
+      "    local bx, by = path[i+1][1], path[i+1][2]",
+      "    local cx, cy = m.closestPointOnSegment(px, py, ax, ay, bx, by)",
+      "    local d      = m.distanceSq(px, py, cx, cy)",
+      "    if d < best_dist then",
+      "        best_dist = d",
+      "        snap_x, snap_y = cx, cy",
+      "    end",
+      "end",
+      "print(string.format(\"snap=(%.1f,%.1f) dist=%.1f\", snap_x, snap_y, math.sqrt(best_dist)))"
+    ]
+  },
+  "math: lk-math-laser-bounce": {
+    "prefix": "lk-math-laser-bounce",
+    "description": "Use for laser / light-ray bouncing off a wall segment. lineIntersect returns the crossing point; segmentIntersectsSegment guards against infinite-line false positives outside segment extents.",
+    "scope": "lua",
+    "body": [
+      "local ${1:m}   = lurek.math",
+      "-- ray from (50,50) heading right-down",
+      "local rx1, ry1 = 50,  50",
+      "local rx2, ry2 = 300, 200",
+      "-- wall segment",
+      "local wx1, wy1 = 200, 0",
+      "local wx2, wy2 = 200, 300",
+      "",
+      "local hit, ix, iy = m.segmentIntersectsSegment(rx1, ry1, rx2, ry2, wx1, wy1, wx2, wy2)",
+      "if hit and ix and iy then",
+      "    print(string.format(\"laser hits wall at (%.1f,%.1f)\", ix, iy))",
+      "end"
+    ]
+  },
+  "math: lk-math-circle-overlap": {
+    "prefix": "lk-math-circle-overlap",
+    "description": "Use for simple trigger zones, pickup radii, and explosion hit detection. circleContainsPoint for point-in-circle, circleIntersectsCircle for collision between two radial actors.",
+    "scope": "lua",
+    "body": [
+      "local ${1:m} = lurek.math",
+      "-- trigger zone at (200, 300) radius 40",
+      "local zx, zy, zr = 200, 300, 40",
+      "-- player at (205, 295) radius 10",
+      "local px, py, pr = 205, 295, 10",
+      "",
+      "local player_in_zone = m.circleContainsPoint(zx, zy, zr, px, py)",
+      "local circles_touch  = m.circleIntersectsCircle(zx, zy, zr, px, py, pr)",
+      "print(\"in_zone=\" .. tostring(player_in_zone) .. \"  circles_touch=\" .. tostring(circles_touch))"
+    ]
+  },
+  "math: lk-math-point-in-room": {
+    "prefix": "lk-math-point-in-room",
+    "description": "Use to test whether a character or cursor is inside an irregular room polygon — for room entry events, valid placement checks, and fog-of-war.",
+    "scope": "lua",
+    "body": [
+      "local ${1:m} = lurek.math",
+      "-- convex room outline (flat list: x1,y1,x2,y2,...)",
+      "local room = { 0, 0,  200, 0,  250, 100,  200, 200,  0, 200 }",
+      "local px, py = 100, 100   -- test point",
+      "",
+      "local inside = m.pointInPolygon(room, px, py)",
+      "print(\"inside room=\" .. tostring(inside))",
+      "if inside then",
+      "    local area = m.polygonArea(room)",
+      "    local cx, cy = m.polygonCentroid(room)",
+      "    print(string.format(\"  area=%.1f  centroid=(%.1f,%.1f)\", area, cx, cy))",
+      "end"
+    ]
+  },
+  "math: lk-math-convex-hull": {
+    "prefix": "lk-math-convex-hull",
+    "description": "Use when building a selection boundary around a set of scattered units or points — the convex hull is the tightest non-concave enclosure and is also the correct input for physics shape decomposition.",
+    "scope": "lua",
+    "body": [
+      "local ${1:m} = lurek.math",
+      "-- scatter of unit positions (flat x,y pairs)",
+      "local pts = { 10, 20,  50, 10,  30, 60,  80, 40,  60, 80,  20, 90 }",
+      "local hull = m.convexHull(pts)",
+      "print(\"hull vertices = \" .. (#hull / 2))",
+      "for i = 1, #hull, 2 do",
+      "    print(string.format(\"  (%.0f, %.0f)\", hull[i], hull[i+1]))",
+      "end"
+    ]
+  },
+  "math: lk-math-triangulate": {
+    "prefix": "lk-math-triangulate",
+    "description": "Use to decompose a concave room or level-section polygon into triangles before passing to lurek.render mesh calls or collision shape builders that require triangle lists.",
+    "scope": "lua",
+    "body": [
+      "local ${1:m}  = lurek.math",
+      "local pts = { 0, 0,  100, 0,  100, 50,  60, 50,  60, 100,  0, 100 }  -- L-shape",
+      "local tris = m.triangulate(pts)",
+      "print(\"triangles = \" .. #tris)"
+    ]
+  },
+  "math: lk-math-bresenham-grid": {
+    "prefix": "lk-math-bresenham-grid",
+    "description": "Use for tile-based line-of-sight, projectile paths on a grid, or highlighting cells a line passes through. bresenham returns all integer cell coordinates between two grid positions.",
+    "scope": "lua",
+    "body": [
+      "local ${1:m}    = lurek.math",
+      "local cells = m.bresenham(2, 3, 8, 7)",
+      "print(\"grid cells on path: \" .. #cells)",
+      "for _, c in ipairs(cells) do",
+      "    print(\"  tile=\" .. c.x .. \",\" .. c.y)",
+      "end"
+    ]
+  },
+  "math: lk-math-rect-union": {
+    "prefix": "lk-math-rect-union",
+    "description": "Use to compute the bounding box that covers multiple objects — for camera framing, dirty region invalidation, or multi-selection outlines.",
+    "scope": "lua",
+    "body": [
+      "local ${1:m} = lurek.math",
+      "-- grow bounding box over a list of objects",
+      "local objects = {",
+      "    { x=10, y=20, w=40, h=30 },",
+      "    { x=80, y=15, w=25, h=60 },",
+      "    { x=50, y=90, w=30, h=20 },",
+      "}",
+      "local bx, by, bw, bh = objects[1].x, objects[1].y, objects[1].w, objects[1].h",
+      "for i = 2, #objects do",
+      "    local o = objects[i]",
+      "    bx, by, bw, bh = m.rectUnion(bx, by, bw, bh, o.x, o.y, o.w, o.h)",
+      "end",
+      "print(string.format(\"bounding box=%.0f,%.0f %.0fx%.0f\", bx, by, bw, bh))"
+    ]
+  },
+  "math: lk-math-bezier-traj": {
+    "prefix": "lk-math-bezier-traj",
+    "description": "Use for arcing projectile paths, thrown objects, or animated spline motion. Define start/control/end, then evaluate at t to get position each frame. Derivative curve gives the tangent for rotation of the sprite along the path.",
+    "scope": "lua",
+    "body": [
+      "local ${1:m}  = lurek.math",
+      "local bz = m.newBezierCurve({ 50, 400,  200, 100,  500, 380 })",
+      "local t  = 0.5   -- animation progress [0..1], advance by dt/total_time each frame",
+      "local px, py = bz:evaluate(t)",
+      "print(string.format(\"projectile at (%.1f,%.1f) t=%.2f\", px, py, t))",
+      "-- tangent for rotation:",
+      "local deriv = bz:getDerivative()",
+      "local dx, dy = deriv:evaluate(t)",
+      "local angle  = math.atan2(dy, dx)",
+      "print(\"angle=\" .. string.format(\"%.3f\", angle))"
+    ]
+  },
+  "math: lk-math-bezier-edit": {
+    "prefix": "lk-math-bezier-edit",
+    "description": "Use in an in-game spline editor or patrol-path tool. Allow the designer to drag control points at runtime; evaluate + render to preview the curve instantly after each change.",
+    "scope": "lua",
+    "body": [
+      "local ${1:m}  = lurek.math",
+      "local bz = m.newBezierCurve({ 0, 0,  100, 200,  300, 200,  400, 0 })",
+      "",
+      "-- simulate moving control point 2 to a new position:",
+      "bz:setControlPoint(2, 100, 250)",
+      "local nx, ny = bz:getControlPoint(2)",
+      "print(\"cp2 moved to=\" .. nx .. \",\" .. ny)",
+      "",
+      "-- render the updated curve as line segments",
+      "local pts = bz:render(20)",
+      "print(\"render sample count=\" .. #pts)"
+    ]
+  },
+  "math: lk-math-catmullrom-patrol": {
+    "prefix": "lk-math-catmullrom-patrol",
+    "description": "Use for smooth patrol paths, camera dolly tracks, or any looping motion that must pass through exact waypoints. Catmull-Rom guarantees C1 continuity at every point — no sharp corners.",
+    "scope": "lua",
+    "body": [
+      "local ${1:m}     = lurek.math",
+      "local waypoints = {",
+      "    {x=50,  y=300},",
+      "    {x=200, y=100},",
+      "    {x=400, y=200},",
+      "    {x=550, y=350},",
+      "}",
+      "local cr  = m.catmullRom(waypoints)",
+      "local t   = 0.0   -- advance by dt / patrol_duration each frame",
+      "",
+      "local px, py = cr:sample(t)",
+      "print(string.format(\"patrol at (%.1f,%.1f)  t=%.3f  segments=%d\",",
+      "    px, py, t, cr:len()))"
+    ]
+  },
+  "math: lk-math-random-loot": {
+    "prefix": "lk-math-random-loot",
+    "description": "Use for loot tables, ability proc chances, and random event triggers. random() returns [0,1); compare against a threshold for probability checks.",
+    "scope": "lua",
+    "body": [
+      "local ${1:m} = lurek.math",
+      "local function roll_loot(common_pct, rare_pct)",
+      "    local r = m.random()",
+      "    if r < rare_pct then",
+      "        return \"rare\"",
+      "    elseif r < rare_pct + common_pct then",
+      "        return \"common\"",
+      "    end",
+      "    return \"nothing\"",
+      "end",
+      "",
+      "local result = roll_loot(0.5, 0.05)  -- 5 % rare, 50 % common",
+      "print(\"loot=\" .. result)",
+      "local dice = m.randomInt(1, 20)",
+      "print(\"d20=\" .. dice)"
+    ]
+  },
+  "render: lk-render-debug-hud": {
+    "prefix": "lk-render-debug-hud",
+    "description": "Use for a semi-transparent debug card overlay. Combines a filled rectangle backdrop, setColor to reset alpha, and printf for aligned text.",
+    "scope": "lua",
+    "body": [
+      "local ${1:r} = lurek.render",
+      "local hud_x, hud_y, hud_w, hud_h = 8, 8, 220, 56",
+      "r.setColor(0, 0, 0, 0.55)",
+      "r.rectangle(\"fill\", hud_x, hud_y, hud_w, hud_h)",
+      "r.setColor(0.9, 0.9, 0.9, 1)",
+      "r.printf(\"FPS: \" .. lurek.engine.fps(), hud_x + 8, hud_y + 8, hud_w - 16, \"left\")",
+      "r.printf(\"Frame: \" .. lurek.engine.frameCount(), hud_x + 8, hud_y + 28, hud_w - 16, \"left\")",
+      "r.setColor(1, 1, 1, 1)"
+    ]
+  },
+  "render: lk-render-stats-overlay": {
+    "prefix": "lk-render-stats-overlay",
+    "description": "Use when profiling draw call budget. getStats() shows drawcalls, textures, and GPU calls in one struct — displays a compact line each frame.",
+    "scope": "lua",
+    "body": [
+      "local ${1:r}     = lurek.render",
+      "local stats = r.getStats()",
+      "r.setColor(0.2, 0.9, 0.2, 0.9)",
+      "r.print(string.format(\"dc=%d  gpu=%d  tex=%d  vmem=%.0fKB\",",
+      "    stats.drawcalls, stats.gpu_draw_calls,",
+      "    stats.textures, stats.texture_memory / 1024), 8, 8)",
+      "r.setColor(1, 1, 1, 1)"
+    ]
+  },
+  "render: lk-render-additive-burst": {
+    "prefix": "lk-render-additive-burst",
+    "description": "Use for glowing particles, explosions, and energy beams. Additive blend mode accumulates light values — overlapping translucent circles brighten the area instead of replacing it.",
+    "scope": "lua",
+    "body": [
+      "local ${1:r} = lurek.render",
+      "r.setBlendMode(\"add\")",
+      "for i = 1, 8 do",
+      "    local angle = (i / 8) * math.pi * 2",
+      "    local px    = 400 + math.cos(angle) * 40",
+      "    local py    = 300 + math.sin(angle) * 40",
+      "    r.setColor(1, 0.5, 0.1, 0.6)",
+      "    r.circle(\"fill\", px, py, 18)",
+      "end",
+      "r.setBlendMode(\"alpha\")",
+      "r.setColor(1, 1, 1, 1)"
+    ]
+  },
+  "render: lk-render-bg-color-transition": {
+    "prefix": "lk-render-bg-color-transition",
+    "description": "Use for day/night cycle, scene mood shift, or level transition. Lerps background RGB between two states each frame using a normalised progress t.",
+    "scope": "lua",
+    "body": [
+      "local ${1:r}    = lurek.render",
+      "local dawn = {0.9, 0.6, 0.3}",
+      "local dusk = {0.1, 0.05, 0.2}",
+      "local t    = 0.5   -- [0=dawn, 1=dusk] — advance with uptime / cycle_duration",
+      "",
+      "local br = dawn[1] + (dusk[1] - dawn[1]) * t",
+      "local bg = dawn[2] + (dusk[2] - dawn[2]) * t",
+      "local bb = dawn[3] + (dusk[3] - dawn[3]) * t",
+      "r.setBackgroundColor(br, bg, bb)"
+    ]
+  },
+  "render: lk-render-camera-follow": {
+    "prefix": "lk-render-camera-follow",
+    "description": "Use as the outer push/pop wrapper around your scene draw. Translates the origin so the camera target stays centred on screen. Wrap all world-space draw calls inside this block.",
+    "scope": "lua",
+    "body": [
+      "local ${1:r}    = lurek.render",
+      "local W, H = r.getDimensions()",
+      "-- replace with your actual camera target and smoothed cam_x/cam_y",
+      "local cam_x, cam_y = 320, 240   -- smoothed camera world position",
+      "r.push()",
+      "r.translate(W * 0.5 - cam_x, H * 0.5 - cam_y)",
+      "    -- draw world objects here",
+      "    r.setColor(0.2, 0.8, 0.2, 1)",
+      "    r.circle(\"fill\", cam_x, cam_y, 10)  -- actor at camera center",
+      "r.pop()",
+      "r.setColor(1, 1, 1, 1)"
+    ]
+  },
+  "render: lk-render-camera-shake": {
+    "prefix": "lk-render-camera-shake",
+    "description": "Use for screen-shake on explosions, damage, and impacts. Applies a per-frame random offset capped by a decaying trauma value, then restores the matrix with pop() so UI elements are unaffected.",
+    "scope": "lua",
+    "body": [
+      "local ${1:r}      = lurek.render",
+      "local trauma = 0.8   -- [0..1], decay toward 0 over time",
+      "local shake  = trauma * trauma * 12   -- quadratic falloff feels more natural",
+      "",
+      "r.push()",
+      "r.translate(",
+      "    (math.random() * 2 - 1) * shake,",
+      "    (math.random() * 2 - 1) * shake",
+      ")",
+      "    -- draw all world-space content inside here",
+      "    r.setColor(0.8, 0.2, 0.1, 1)",
+      "    r.rectangle(\"fill\", 200, 180, 60, 40)",
+      "r.pop()",
+      "-- decay trauma each frame: trauma = math.max(0, trauma - dt * 2)"
+    ]
+  },
+  "render: lk-render-sprite-transform": {
+    "prefix": "lk-render-sprite-transform",
+    "description": "Use to draw a sprite with its own local pivot, rotation, and scale without affecting subsequent draw calls. Essential for hierarchical character rigs (weapon attached to hand) or world-space billboards.",
+    "scope": "lua",
+    "body": [
+      "local ${1:r}  = lurek.render",
+      "local img = r.newImage(\"content/examples/assets/images/sample_texture.png\")",
+      "local W, H = img:getDimensions()",
+      "-- world position, rotation angle, scale",
+      "local wx, wy, angle, sx, sy = 300, 250, math.pi / 6, 2, 2",
+      "local ox, oy = W * 0.5, H * 0.5    -- pivot at image centre",
+      "",
+      "r.push()",
+      "r.translate(wx, wy)",
+      "r.rotate(angle)",
+      "r.scale(sx, sy)",
+      "r.draw(img, -ox, -oy)",
+      "r.pop()",
+      "r.setColor(1, 1, 1, 1)"
+    ]
+  },
+  "render: lk-render-scissor-clip": {
+    "prefix": "lk-render-scissor-clip",
+    "description": "Use to restrict rendering to a minimap frame, inventory slot, or scrolling text panel — nothing drawn outside the scissor rect appears on screen.",
+    "scope": "lua",
+    "body": [
+      "local ${1:r}      = lurek.render",
+      "local vp_x, vp_y, vp_w, vp_h = 650, 10, 140, 140   -- minimap rectangle",
+      "r.setScissor(vp_x, vp_y, vp_w, vp_h)",
+      "    r.setColor(0.1, 0.1, 0.1, 1)",
+      "    r.rectangle(\"fill\", vp_x, vp_y, vp_w, vp_h)    -- minimap background",
+      "    r.setColor(0.3, 0.9, 0.3, 1)",
+      "    r.circle(\"fill\", 720, 80, 6)                     -- player dot",
+      "r.setScissor()    -- restore full viewport",
+      "r.setColor(1, 1, 1, 1)"
+    ]
+  },
+  "render: lk-render-layer-setup": {
+    "prefix": "lk-render-layer-setup",
+    "description": "Use at game init to define named draw layers in z-order. All subsequent setLayer() calls use these names — easier to read than raw z numbers and safe to reorder without touching every draw site.",
+    "scope": "lua",
+    "body": [
+      "local ${1:r} = lurek.render",
+      "r.newLayer(\"sky\",        0)",
+      "r.newLayer(\"terrain\",   10)",
+      "r.newLayer(\"actors\",    20)",
+      "r.newLayer(\"fx\",        30)",
+      "r.newLayer(\"ui\",       100)",
+      "",
+      "r.setLayer(\"actors\")",
+      "print(\"current layer=\" .. r.currentLayer())",
+      "print(\"ui visible=\" .. tostring(r.isLayerVisible(\"ui\")))"
+    ]
+  },
+  "render: lk-render-draw-layer-priority": {
+    "prefix": "lk-render-draw-layer-priority",
+    "description": "Use when you need fine-grained z-ordering within a layer (e.g. sort actors by Y position for 2.5D overlap). newDrawLayer queues callbacks by priority integer and flushes them in sorted order.",
+    "scope": "lua",
+    "body": [
+      "local ${1:r}     = lurek.render",
+      "local layer = r.newDrawLayer()",
+      "",
+      "local actors = {",
+      "    { y = 250, name = \"orc\"  },",
+      "    { y = 100, name = \"hero\" },",
+      "    { y = 310, name = \"troll\"},",
+      "}",
+      "for _, a in ipairs(actors) do",
+      "    local name = a.name",
+      "    layer:queue(a.y, function()",
+      "        r.setColor(0.7, 0.5, 0.3, 1)",
+      "        r.print(name, 50, a.y)",
+      "    end)",
+      "end",
+      "layer:flush()",
+      "r.setColor(1, 1, 1, 1)"
+    ]
+  },
+  "render: lk-render-canvas-post": {
+    "prefix": "lk-render-canvas-post",
+    "description": "Use to render a scene to an off-screen canvas, then draw the canvas to screen with a tint, scale, or custom shader — foundation for minimap thumbnails, reflection captures, and simple post-processing effects.",
+    "scope": "lua",
+    "body": [
+      "local ${1:r}      = lurek.render",
+      "local canvas = r.newCanvas(256, 256)",
+      "",
+      "r.setCanvas(canvas)",
+      "    r.setColor(0.1, 0.05, 0.2, 1)",
+      "    r.rectangle(\"fill\", 0, 0, 256, 256)",
+      "    r.setColor(0.8, 0.3, 0.1, 1)",
+      "    r.circle(\"fill\", 128, 128, 60)",
+      "r.setCanvas(nil)",
+      "",
+      "-- draw result with a blue tint at half size",
+      "r.setColor(0.7, 0.7, 1.0, 0.9)",
+      "r.draw(canvas, 500, 100, 0, 0.5, 0.5)",
+      "r.setColor(1, 1, 1, 1)"
+    ]
+  },
+  "render: lk-render-sprite-batch-tile": {
+    "prefix": "lk-render-sprite-batch-tile",
+    "description": "Use to render a tile map efficiently. SpriteBatch batches hundreds of quads in a single GPU draw call — essential for performance at 64×64+ tile maps. Rebuild the batch only when the map changes, not every frame.",
+    "scope": "lua",
+    "body": [
+      "local ${1:r}    = lurek.render",
+      "local TILE = 16",
+      "local COLS = 10",
+      "local ROWS = 8",
+      "local sheet = r.newImage(\"content/examples/assets/images/sample_texture.png\")",
+      "local sw, sh = sheet:getDimensions()",
+      "local batch = r.newSpriteBatch(sheet, COLS * ROWS)",
+      "",
+      "-- build tile map (call once or when map changes)",
+      "batch:clear()",
+      "for row = 0, ROWS - 1 do",
+      "    for col = 0, COLS - 1 do",
+      "        -- tile 0 = top-left 16x16 of sheet",
+      "        local q = r.newQuad(0, 0, TILE, TILE, sw, sh)",
+      "        batch:add(col * TILE, row * TILE, 0, 1, 1)",
+      "        _ = q",
+      "    end",
+      "end",
+      "r.draw(batch, 50, 50)"
+    ]
+  },
+  "render: lk-render-draw-many": {
+    "prefix": "lk-render-draw-many",
+    "description": "Use for a pool of transient visual objects (sparks, dust motes, debris). Build the list table once per frame and pass to drawMany — one call batches all draw operations with different positions and rotations.",
+    "scope": "lua",
+    "body": [
+      "local ${1:r}   = lurek.render",
+      "local img = r.newImage(\"content/examples/assets/images/sample_texture.png\")",
+      "",
+      "local particles = {}",
+      "for i = 1, 20 do",
+      "    local px  = math.random(50, 750)",
+      "    local py  = math.random(50, 550)",
+      "    local ang = math.random() * math.pi * 2",
+      "    local sc  = 0.1 + math.random() * 0.3",
+      "    particles[i] = { img, px, py, ang, sc, sc }",
+      "end",
+      "r.drawMany(particles)"
+    ]
+  },
+  "render: lk-render-quad-anim": {
+    "prefix": "lk-render-quad-anim",
+    "description": "Use for frame-by-frame sprite animation from a sprite sheet. Build quads once at init, then select the current frame by index each update.",
+    "scope": "lua",
+    "body": [
+      "local ${1:r}     = lurek.render",
+      "local sheet = r.newImage(\"content/examples/assets/images/sample_texture.png\")",
+      "local sw, sh = sheet:getDimensions()",
+      "local FRAME_W, FRAME_H = 16, 16",
+      "local FRAME_COUNT = 4",
+      "local frame_duration = 0.12   -- seconds per frame",
+      "local quads = {}",
+      "for i = 0, FRAME_COUNT - 1 do",
+      "    quads[i + 1] = r.newQuad(i * FRAME_W, 0, FRAME_W, FRAME_H, sw, sh)",
+      "end",
+      "-- in update(dt): anim_timer = anim_timer + dt; if anim_timer >= frame_duration then ...",
+      "local current_frame = 1   -- index into quads[]",
+      "r.draw(sheet, 300, 300)   -- placeholder: real usage: r.drawq(sheet, quads[current_frame], x, y)",
+      "_ = quads"
+    ]
+  },
+  "render: lk-render-gradient-banner": {
+    "prefix": "lk-render-gradient-banner",
+    "description": "Use for title screens, section headers, or UI banners. drawGradientRect creates a smooth horizontal fade; printf centres the text on top.",
+    "scope": "lua",
+    "body": [
+      "local ${1:r}   = lurek.render",
+      "local bx, by, bw, bh = 100, 200, 600, 64",
+      "r.drawGradientRect(bx, by, bw, bh, {0.1, 0.05, 0.4}, {0.6, 0.1, 0.2}, \"horizontal\")",
+      "r.setColor(1, 1, 1, 1)",
+      "r.printf(\"LEVEL COMPLETE\", bx, by + 20, bw, \"center\")"
+    ]
+  },
+  "render: lk-render-hex-grid": {
+    "prefix": "lk-render-hex-grid",
+    "description": "Use for hex-grid strategy or board game views. Iterates a grid of pointy- top hex tiles with the standard offset stagger between columns.",
+    "scope": "lua",
+    "body": [
+      "local ${1:r}      = lurek.render",
+      "local RADIUS = 20",
+      "local COLS, ROWS = 6, 5",
+      "for col = 0, COLS - 1 do",
+      "    for row = 0, ROWS - 1 do",
+      "        local hx = 60 + col * (RADIUS * math.sqrt(3))",
+      "        local hy = 60 + row * (RADIUS * 2) + (col % 2 == 1 and RADIUS or 0)",
+      "        r.setColor(0.2, 0.55, 0.35, 1)",
+      "        r.drawHexTile(hx, hy, RADIUS, \"pointyTop\", \"fill\")",
+      "        r.setColor(0.1, 0.3, 0.2, 1)",
+      "        r.drawHexTile(hx, hy, RADIUS, \"pointyTop\", \"line\")",
+      "    end",
+      "end",
+      "r.setColor(1, 1, 1, 1)"
+    ]
+  },
+  "render: lk-render-iso-cube": {
+    "prefix": "lk-render-iso-cube",
+    "description": "Use to draw isometric cube walls and floors. Vary topColor / leftColor / rightColor to encode terrain elevation, shadow, or material type while keeping a consistent isometric projection.",
+    "scope": "lua",
+    "body": [
+      "local ${1:r}      = lurek.render",
+      "local tile_w = 64",
+      "local tile_h = 32",
+      "local walls  = {",
+      "    { col=0, row=0, depth=20, top={0.7,0.7,0.7,1}, left={0.45,0.45,0.45,1}, right={0.3,0.3,0.3,1} },",
+      "    { col=1, row=0, depth=20, top={0.3,0.6,0.3,1}, left={0.2,0.4,0.2,1},   right={0.1,0.25,0.1,1} },",
+      "}",
+      "for _, t in ipairs(walls) do",
+      "    local sx = 200 + (t.col - t.row) * tile_w * 0.5",
+      "    local sy = 150 + (t.col + t.row) * tile_h * 0.5",
+      "    r.drawIsoCubeTile(sx, sy, tile_w, tile_h,",
+      "        { depth=t.depth, topColor=t.top, leftColor=t.left, rightColor=t.right })",
+      "end"
+    ]
+  },
+  "render: lk-render-bevel-panel": {
+    "prefix": "lk-render-bevel-panel",
+    "description": "Use for retro / classic UI panels and inset fields. drawBevelRect provides raised, sunken, groove, and ridge effects with a single call — no extra image assets needed.",
+    "scope": "lua",
+    "body": [
+      "local ${1:r} = lurek.render",
+      "-- window frame: raised",
+      "r.drawBevelRect(50, 50, 300, 200, 3, \"raised\")",
+      "-- inset content area: sunken",
+      "r.drawBevelRect(60, 90, 280, 150, 2, \"sunken\")",
+      "-- status bar: groove",
+      "r.drawBevelRect(60, 100, 280, 20, 1, \"groove\")",
+      "r.setColor(0.9, 0.9, 0.9, 1)",
+      "r.print(\"Health: 80 / 100\", 70, 104)",
+      "r.setColor(1, 1, 1, 1)"
+    ]
+  },
+  "render: lk-render-rich-text": {
+    "prefix": "lk-render-rich-text",
+    "description": "Use for status messages, chat lines, or dialogue that mix multiple colours and sizes in one string. printRich accepts a span table — no manual x offset bookkeeping required.",
+    "scope": "lua",
+    "body": [
+      "local ${1:r}     = lurek.render",
+      "local spans = {",
+      "    { text = \"HP \",    r=0.8, g=0.2, b=0.2, a=1, scale=1   },",
+      "    { text = \"45\",     r=1,   g=0,   b=0,   a=1, scale=1.2 },",
+      "    { text = \" / 100 \", r=0.8, g=0.8, b=0.8, a=0.8, scale=1 },",
+      "    { text = \"[low]\",  r=1,   g=0.5, b=0,   a=1, scale=0.9 },",
+      "}",
+      "r.printRich(spans, 20, 560)"
+    ]
+  },
+  "render: lk-render-wireframe": {
+    "prefix": "lk-render-wireframe",
+    "description": "Use during collision-mesh debugging to switch all filled shapes to outline mode for one frame, then restore normal fill — revealing triangle topology without permanently changing draw calls.",
+    "scope": "lua",
+    "body": [
+      "local ${1:r} = lurek.render",
+      "if lurek.engine.isDebug() then",
+      "    r.setWireframe(true)",
+      "    -- draw filled geometry as wireframe:",
+      "    r.setColor(0, 1, 0.5, 1)",
+      "    r.rectangle(\"fill\", 100, 100, 200, 150)",
+      "    r.circle(\"fill\", 300, 200, 50)",
+      "    r.setWireframe(false)",
+      "end"
+    ]
+  },
+  "runtime: lk-sys-platform-branch": {
+    "prefix": "lk-sys-platform-branch",
+    "description": "Use to apply platform-specific code paths (e.g. keyboard shortcuts, path separators, OS integration). Combine with getArch() for more precise dispatch (e.g. \"Windows\" + \"x86_64\").",
+    "scope": "lua",
+    "body": [
+      "local ${1:rt}  = lurek.runtime",
+      "local os  = rt.getOS()",
+      "local arch = rt.getArch()",
+      "print(\"platform=\" .. os .. \"  arch=\" .. arch)",
+      "if os == \"Windows\" then",
+      "    -- Windows-specific init",
+      "elseif os == \"Linux\" then",
+      "    -- Linux-specific init",
+      "elseif os == \"macOS\" then",
+      "    -- macOS-specific init",
+      "end"
+    ]
+  },
+  "runtime: lk-sys-version-guard": {
+    "prefix": "lk-sys-version-guard",
+    "description": "Use at game boot to verify the engine version meets the minimum requirement. Fail fast with a clear message rather than crashing later on a missing API or changed behaviour.",
+    "scope": "lua",
+    "body": [
+      "local ${1:rt}  = lurek.runtime",
+      "local ver = rt.getVersion()",
+      "print(\"lurek2d version=\" .. ver)",
+      "",
+      "-- Simple semver major.minor comparison",
+      "local maj, min = ver:match(\"^(%d+)%.(%d+)\")",
+      "maj = tonumber(maj) or 0",
+      "min = tonumber(min) or 0",
+      "",
+      "if maj < 0 or (maj == 0 and min < 6) then",
+      "    error(\"This game requires Lurek2D >= 0.6, found \" .. ver)",
+      "end",
+      "print(\"version ok\")"
+    ]
+  },
+  "runtime: lk-sys-info-dump": {
+    "prefix": "lk-sys-info-dump",
+    "description": "Use during development or debug builds to log the full engine environment (OS, version, Lua runtime, renderer, CPU count, memory). Gate behind isDebug to avoid leaking info in release builds.",
+    "scope": "lua",
+    "body": [
+      "local ${1:rt}   = lurek.runtime",
+      "local info = rt.getInfo()",
+      "if lurek.engine.isDebug() then",
+      "    print(string.format(",
+      "        \"[sys] %s v%s | %s | %s | %d cores | %.0f MB\",",
+      "        info.engine, info.version, info.os,",
+      "        info.lua_version, info.processors,",
+      "        (info.memory or 0) / (1024 * 1024)",
+      "    ))",
+      "end"
+    ]
+  },
+  "runtime: lk-sys-env-path": {
+    "prefix": "lk-sys-env-path",
+    "description": "Use to read environment variables for configuring dev overrides, save directories, or tool paths without hardcoding. Falls back gracefully when the variable is not set.",
+    "scope": "lua",
+    "body": [
+      "local ${1:rt}       = lurek.runtime",
+      "local data_dir = rt.getEnv(\"LUREK_DATA_DIR\") or \"save\"",
+      "local log_dir  = rt.getEnv(\"LUREK_LOG_DIR\")  or \"logs\"",
+      "print(\"data_dir=\" .. data_dir)",
+      "print(\"log_dir=\"  .. log_dir)"
+    ]
+  },
+  "runtime: lk-sys-parseargs": {
+    "prefix": "lk-sys-parseargs",
+    "description": "Use to parse --flag and --key=value CLI arguments at game startup. parseArgs returns structured flags, options, and positional args so you can override config values without editing files.",
+    "scope": "lua",
+    "body": [
+      "local ${1:rt}     = lurek.runtime",
+      "local parsed = rt.parseArgs()   -- uses process args by default",
+      "",
+      "local headless    = parsed.flags[\"headless\"]  or false",
+      "local config_path = parsed.options[\"config\"]  or \"save/options.toml\"",
+      "local map_name    = parsed.positional[1]      or \"main_menu\"",
+      "",
+      "print(\"headless=\"   .. tostring(headless))",
+      "print(\"config=\"     .. config_path)",
+      "print(\"start_map=\"  .. map_name)"
+    ]
+  },
+  "runtime: lk-sys-log": {
+    "prefix": "lk-sys-log",
+    "description": "Use lurek.runtime.log() for structured game-level log entries instead of print(). Level-tagged messages integrate with the RUST_LOG filter so debug lines are suppressed in release builds automatically.",
+    "scope": "lua",
+    "body": [
+      "local ${1:rt} = lurek.runtime",
+      "rt.log(\"info\",  \"Game initialising: map=dungeon_01\")",
+      "rt.log(\"debug\", \"Player spawn position: x=100 y=200\")",
+      "rt.log(\"warn\",  \"Save slot 3 missing — creating new save\")",
+      "rt.log(\"error\", \"Failed to load asset: assets/fonts/missing.ttf\")"
+    ]
+  },
+  "runtime: lk-sys-loglevel": {
+    "prefix": "lk-sys-loglevel",
+    "description": "Use setLogLevel to lower verbosity in release builds and raise it during development sessions. Pair with getLogLevel() to display the current level in a debug overlay or settings menu.",
+    "scope": "lua",
+    "body": [
+      "local ${1:rt} = lurek.runtime",
+      "if lurek.engine.isDebug() then",
+      "    rt.setLogLevel(\"debug\")",
+      "else",
+      "    rt.setLogLevel(\"warn\")",
+      "end",
+      "print(\"log level=\" .. rt.getLogLevel())"
+    ]
+  },
+  "runtime: lk-sys-clipboard": {
+    "prefix": "lk-sys-clipboard",
+    "description": "Use for user-facing copy/paste: share codes, map seeds, chat messages. getClipboardText returns nil when the clipboard is empty or unavailable — always guard before using the value.",
+    "scope": "lua",
+    "body": [
+      "local ${1:rt} = lurek.runtime",
+      "-- write to clipboard (e.g. player copies a share code)",
+      "local share_code = \"GAME-ABCD-1234\"",
+      "rt.setClipboardText(share_code)",
+      "print(\"copied to clipboard: \" .. share_code)",
+      "",
+      "-- read back (e.g. player pastes a code from another window)",
+      "local pasted = rt.getClipboardText()",
+      "if pasted and #pasted > 0 then",
+      "    print(\"pasted: \" .. pasted)",
+      "else",
+      "    print(\"clipboard empty or unavailable\")",
+      "end"
+    ]
+  },
+  "runtime: lk-sys-config-inspect": {
+    "prefix": "lk-sys-config-inspect",
+    "description": "Use to read active engine config at runtime and detect when a hot- reload has occurred (config_reload_revision increments). Apply changed values without restarting.",
+    "scope": "lua",
+    "body": [
+      "local ${1:rt}  = lurek.runtime",
+      "local cfg = rt.getConfig()",
+      "print(\"runtime_mode=\"    .. (cfg.runtime_mode or \"unknown\"))",
+      "print(\"physics_hz=\"      .. (cfg.physics_tick_rate or 0))",
+      "print(\"log_level=\"       .. (cfg.log_level or \"info\"))",
+      "print(\"reload_revision=\" .. (cfg.config_reload_revision or 0))",
+      "",
+      "-- detect hot-reload:",
+      "local last_rev = cfg.config_reload_revision or 0",
+      "-- later in update: if rt.getConfig().config_reload_revision ~= last_rev then apply() end",
+      "_ = last_rev"
+    ]
+  },
+  "runtime: lk-sys-last-error": {
+    "prefix": "lk-sys-last-error",
+    "description": "Use getLastError() after calls that can fail to show a user-facing error message and log a diagnostic hint. The table includes message, code, category, and an optional hint for resolution.",
+    "scope": "lua",
+    "body": [
+      "local ${1:rt}  = lurek.runtime",
+      "local err = rt.getLastError()",
+      "if err then",
+      "    print(string.format(\"[%s] %s (code=%s)\", err.category, err.message, err.code))",
+      "    if err.hint then",
+      "        print(\"hint: \" .. err.hint)",
+      "    end",
+      "    -- show error dialog:",
+      "    -- lurek.ui.showAlert(\"Error\", err.message)",
+      "end"
+    ]
+  },
+  "runtime: lk-sys-error-snapshot": {
+    "prefix": "lk-sys-error-snapshot",
+    "description": "Use errorSnapshot to create a structured JSON diagnostic that captures the engine state at the point of failure — useful for crash reporters, telemetry, and support tickets.",
+    "scope": "lua",
+    "body": [
+      "local ${1:rt}   = lurek.runtime",
+      "local snap = rt.errorSnapshot(\"unexpected nil in inventory system\")",
+      "print(\"snapshot JSON: \" .. #snap .. \" chars\")",
+      "-- write to file for support:",
+      "-- lurek.filesystem.write(\"save/crash_report.json\", snap)"
+    ]
+  },
+  "runtime: lk-sys-runbatch": {
+    "prefix": "lk-sys-runbatch",
+    "description": "Use runBatch to run a set of named boot validation tasks and collect per-task pass/fail/time results. getBatchResults summarises the counts for a single-line CI gate or dev-mode startup report.",
+    "scope": "lua",
+    "body": [
+      "local ${1:rt} = lurek.runtime",
+      "local results = rt.runBatch({",
+      "    check_save_dir = function()",
+      "        assert(lurek.filesystem.isDirectory(\"save\"), \"save/ directory missing\")",
+      "    end,",
+      "    check_engine_version = function()",
+      "        local ver = rt.getVersion()",
+      "        local maj, min = ver:match(\"^(%d+)%.(%d+)\")",
+      "        assert(tonumber(maj) >= 0 and tonumber(min) >= 6, \"engine too old\")",
+      "    end,",
+      "    check_config = function()",
+      "        local cfg = rt.getConfig()",
+      "        assert(cfg.runtime_mode, \"runtime_mode not set in config\")",
+      "    end,",
+      "}, { stopOnError = false })",
+      "",
+      "local passed, failed, skipped = rt.getBatchResults(results)",
+      "print(string.format(\"boot checks: %d passed  %d failed  %d skipped\",",
+      "    passed, failed, skipped))",
+      "if failed > 0 then",
+      "    for name, r in pairs(results) do",
+      "        if r.status == \"failed\" then",
+      "            rt.log(\"error\", \"boot check failed: \" .. name .. \" — \" .. (r.error or \"\"))",
+      "        end",
+      "    end",
+      "end"
+    ]
+  },
+  "ui: lk-ui-panel-button-status": {
+    "prefix": "lk-ui-panel-button-status",
+    "description": "Use for a persistent HUD status strip with action button. Combines a panel container, a label for dynamic status text, and a button with callback — the minimal pattern for any interactive overlay widget.",
+    "scope": "lua",
+    "body": [
+      "local ${1:panel} = lurek.ui.newPanel()",
+      "panel:setPosition(20, 20)",
+      "panel:setSize(220, 50)",
+      "",
+      "local lbl = lurek.ui.newLabel(\"Status: idle\")",
+      "lbl:setPosition(8, 8)",
+      "lbl:setSize(130, 28)",
+      "",
+      "local btn = lurek.ui.newButton(\"Action\")",
+      "btn:setPosition(140, 8)",
+      "btn:setSize(72, 28)",
+      "btn:setOnClick(function()",
+      "    lbl:setText(\"Status: active\")",
+      "    print(\"action triggered\")",
+      "end)",
+      "",
+      "panel:addChild(lbl)",
+      "panel:addChild(btn)",
+      "print(\"strip children=\" .. panel:getChildCount())"
+    ]
+  },
+  "ui: lk-ui-label-score": {
+    "prefix": "lk-ui-label-score",
+    "description": "Use to show and update a score or counter label that changes frequently. Create once at init, call setText each frame or on event — no widget rebuild required.",
+    "scope": "lua",
+    "body": [
+      "local ${1:score_lbl} = lurek.ui.newLabel(\"Score: 0\")",
+      "score_lbl:setPosition(600, 12)",
+      "score_lbl:setSize(160, 30)",
+      "score_lbl:setId(\"score_label\")",
+      "",
+      "local score = 0",
+      "local function add_score(pts)",
+      "    score = score + pts",
+      "    score_lbl:setText(\"Score: \" .. score)",
+      "end",
+      "",
+      "add_score(100)",
+      "print(\"label text=\" .. score_lbl:getText())"
+    ]
+  },
+  "ui: lk-ui-button-enable-guard": {
+    "prefix": "lk-ui-button-enable-guard",
+    "description": "Use to disable action buttons during async operations, cutscenes, or cooldown periods to prevent double-activation. Re-enable when the condition clears.",
+    "scope": "lua",
+    "body": [
+      "local ${1:btn} = lurek.ui.newButton(\"Confirm\")",
+      "btn:setPosition(100, 100)",
+      "btn:setSize(120, 36)",
+      "btn:setId(\"confirm_btn\")",
+      "btn:setTooltip(\"Submit your selection\")",
+      "btn:setOnClick(function()",
+      "    print(\"confirmed\")",
+      "    btn:setEnabled(false)  -- prevent double-click during processing",
+      "end)",
+      "",
+      "print(\"enabled=\" .. tostring(btn:isEnabled()))",
+      "-- re-enable after async: btn:setEnabled(true)"
+    ]
+  },
+  "ui: lk-ui-input-validate": {
+    "prefix": "lk-ui-input-validate",
+    "description": "Use for name entry, chat input, or any text field that must validate before submit. Reads getText(), checks constraints, and shows error label feedback without leaving the screen.",
+    "scope": "lua",
+    "body": [
+      "local ${1:field} = lurek.ui.newTextInput()",
+      "field:setPosition(80, 150)",
+      "field:setSize(200, 32)",
+      "",
+      "local error_lbl = lurek.ui.newLabel(\"\")",
+      "error_lbl:setPosition(80, 186)",
+      "error_lbl:setSize(200, 20)",
+      "error_lbl:setVisible(false)",
+      "",
+      "local submit_btn = lurek.ui.newButton(\"OK\")",
+      "submit_btn:setPosition(288, 150)",
+      "submit_btn:setSize(50, 32)",
+      "submit_btn:setOnClick(function()",
+      "    local name = field:getText()",
+      "    if #name < 2 then",
+      "        error_lbl:setText(\"Name too short\")",
+      "        error_lbl:setVisible(true)",
+      "    else",
+      "        error_lbl:setVisible(false)",
+      "        print(\"name accepted: \" .. name)",
+      "    end",
+      "end)"
+    ]
+  },
+  "ui: lk-ui-horizontal-toolbar": {
+    "prefix": "lk-ui-horizontal-toolbar",
+    "description": "Use to build a toolbar of buttons that auto-spaces itself. newLayout with \"horizontal\" direction + spacing handles positioning automatically — adding or removing buttons does not require manual coordinate updates.",
+    "scope": "lua",
+    "body": [
+      "local ${1:toolbar} = lurek.ui.newLayout(\"horizontal\")",
+      "toolbar:setPosition(0, 0)",
+      "toolbar:setSize(800, 40)",
+      "toolbar:setSpacing(4)",
+      "toolbar:setJustify(\"start\")",
+      "",
+      "local labels = { \"File\", \"Edit\", \"View\", \"Help\" }",
+      "for _, txt in ipairs(labels) do",
+      "    local b = lurek.ui.newButton(txt)",
+      "    b:setSize(80, 32)",
+      "    b:setMargin(0, 2, 0, 2)",
+      "    toolbar:addChild(b)",
+      "end",
+      "print(\"toolbar children=\" .. toolbar:getChildCount())"
+    ]
+  },
+  "ui: lk-ui-flex-sidebar": {
+    "prefix": "lk-ui-flex-sidebar",
+    "description": "Use to split a panel into a fixed sidebar and a flexible content area. setFlexGrow(0) fixes the sidebar width; setFlexGrow(1) lets the content area expand to fill remaining space without hardcoding coordinates.",
+    "scope": "lua",
+    "body": [
+      "local ${1:row} = lurek.ui.newLayout(\"horizontal\")",
+      "row:setPosition(0, 40)",
+      "row:setSize(800, 560)",
+      "row:setSpacing(0)",
+      "",
+      "local sidebar = lurek.ui.newPanel()",
+      "sidebar:setSize(180, 560)",
+      "sidebar:setFlexGrow(0)",
+      "sidebar:setFlexShrink(0)",
+      "",
+      "local content = lurek.ui.newPanel()",
+      "content:setFlexGrow(1)",
+      "",
+      "row:addChild(sidebar)",
+      "row:addChild(content)",
+      "print(\"sidebar grow=\" .. sidebar:getFlexGrow() .. \" content grow=\" .. content:getFlexGrow())"
+    ]
+  },
+  "ui: lk-ui-grid-inventory": {
+    "prefix": "lk-ui-grid-inventory",
+    "description": "Use for inventory, hotbar, or card selection grids. newLayout with \"grid\" direction + setColumns handles the row wrapping — position stays correct when slots are added or removed dynamically.",
+    "scope": "lua",
+    "body": [
+      "local ${1:COLS}  = 5",
+      "local SLOT_W = 52",
+      "local SLOT_H = 52",
+      "",
+      "local grid = lurek.ui.newLayout(\"grid\")",
+      "grid:setPosition(60, 200)",
+      "grid:setSize(COLS * SLOT_W + (COLS - 1) * 4, 300)",
+      "grid:setColumns(COLS)",
+      "grid:setSpacing(4)",
+      "",
+      "for i = 1, 15 do",
+      "    local slot = lurek.ui.newPanel()",
+      "    slot:setSize(SLOT_W, SLOT_H)",
+      "    slot:setId(\"slot_\" .. i)",
+      "    grid:addChild(slot)",
+      "end",
+      "print(\"grid slots=\" .. grid:getChildCount())"
+    ]
+  },
+  "ui: lk-ui-padding-margin": {
+    "prefix": "lk-ui-padding-margin",
+    "description": "Use to add comfortable inner spacing (padding) and outer gap (margin) to any widget. setPadding controls the content box inset; setMargin controls gap to siblings in a layout container.",
+    "scope": "lua",
+    "body": [
+      "local ${1:card} = lurek.ui.newPanel()",
+      "card:setSize(240, 100)",
+      "card:setPadding(12, 16, 12, 16)   -- top, right, bottom, left",
+      "card:setMargin(8)                  -- uniform 8px gap between cards",
+      "",
+      "local title = lurek.ui.newLabel(\"Card Title\")",
+      "title:setSize(200, 24)",
+      "card:addChild(title)",
+      "",
+      "local t, r, b, l = card:getPadding()",
+      "print(string.format(\"padding t=%d r=%d b=%d l=%d\", t, r, b, l))"
+    ]
+  },
+  "ui: lk-ui-toast-fade": {
+    "prefix": "lk-ui-toast-fade",
+    "description": "Use for transient notification toasts. The widget slides in, waits, then fades out with hide_on_complete so it is automatically hidden when done — no manual timer polling needed.",
+    "scope": "lua",
+    "body": [
+      "local ${1:toast} = lurek.ui.newLabel(\"Achievement unlocked!\")",
+      "toast:setPosition(250, 540)",
+      "toast:setSize(300, 36)",
+      "toast:setAlpha(0)",
+      "",
+      "-- show sequence:",
+      "toast:setVisible(true)",
+      "toast:animateAlpha(1.0, 0.3)      -- fade in over 300 ms",
+      "-- after delay: toast:animateAlpha(0.0, 0.5, true)   -- fade out and hide",
+      "print(\"toast animating=\" .. tostring(toast:isAnimating()))"
+    ]
+  },
+  "ui: lk-ui-dialog-slide": {
+    "prefix": "lk-ui-dialog-slide",
+    "description": "Use for modal dialogs, pause menus, and contextual panels. slideIn brings the widget on-screen from an off-screen offset; slideOut sends it back. Pair with cancelAnimations to interrupt when the player presses ESC.",
+    "scope": "lua",
+    "body": [
+      "local ${1:dialog} = lurek.ui.newPanel()",
+      "dialog:setPosition(200, 200)",
+      "dialog:setSize(400, 250)",
+      "dialog:setVisible(false)",
+      "",
+      "local function open_dialog()",
+      "    dialog:setVisible(true)",
+      "    dialog:setAlpha(0)",
+      "    dialog:fadeIn()",
+      "    dialog:slideIn(0, -300)   -- enter from above",
+      "end",
+      "",
+      "local function close_dialog()",
+      "    dialog:cancelAnimations()",
+      "    dialog:slideOut(0, -300)",
+      "    -- listen for animating = false, then: dialog:setVisible(false)",
+      "end",
+      "",
+      "open_dialog()",
+      "print(\"dialog visible=\" .. tostring(dialog:isVisible()))",
+      "_ = close_dialog"
+    ]
+  },
+  "ui: lk-ui-tween-position": {
+    "prefix": "lk-ui-tween-position",
+    "description": "Use for animated card moves, ability icon repositioning, and drag-to-drop previews. animatePosition drives the widget to a world-space target over a duration; cancel returns it instantly for emergency dismissal.",
+    "scope": "lua",
+    "body": [
+      "local ${1:card} = lurek.ui.newPanel()",
+      "card:setPosition(100, 400)",
+      "card:setSize(80, 120)",
+      "",
+      "-- animate to discard pile position",
+      "card:animatePosition(600, 480, 0.4)",
+      "print(\"card animating=\" .. tostring(card:isAnimating()))",
+      "",
+      "-- cancel if player picks it back up:",
+      "-- card:cancelAnimations()"
+    ]
+  },
+  "ui: lk-ui-slider-volume": {
+    "prefix": "lk-ui-slider-volume",
+    "description": "Use for any continuous setting: volume, brightness, sensitivity. Create a labeled slider; read getValue() on change callback to apply the setting to the audio bus or engine config.",
+    "scope": "lua",
+    "body": [
+      "local ${1:vol_label}  = lurek.ui.newLabel(\"Volume: 80%\")",
+      "vol_label:setPosition(40, 80)",
+      "vol_label:setSize(160, 24)",
+      "",
+      "local slider = lurek.ui.newSlider(0, 100)   -- min, max",
+      "slider:setPosition(40, 108)",
+      "slider:setSize(200, 24)",
+      "slider:setOnChange(function()",
+      "    local val = slider:getValue()",
+      "    vol_label:setText(string.format(\"Volume: %.0f%%\", val))",
+      "    -- lurek.audio.setBusVolume(\"master\", val / 100)",
+      "    print(\"volume=\" .. val)",
+      "end)",
+      "print(\"slider value=\" .. slider:getValue())"
+    ]
+  },
+  "ui: lk-ui-checkbox": {
+    "prefix": "lk-ui-checkbox",
+    "description": "Use for binary settings (fullscreen, subtitles, inverted controls). Checkbox is the clearest affordance for on/off options in settings menus; read isChecked() in the callback to apply the change immediately.",
+    "scope": "lua",
+    "body": [
+      "local ${1:chk} = lurek.ui.newCheckbox(\"Enable subtitles\")",
+      "chk:setPosition(40, 160)",
+      "chk:setSize(220, 28)",
+      "chk:setChecked(true)",
+      "chk:setOnChange(function()",
+      "    local on = chk:isChecked()",
+      "    print(\"subtitles=\" .. tostring(on))",
+      "    -- apply subtitle setting to game state",
+      "end)",
+      "print(\"checked=\" .. tostring(chk:isChecked()))"
+    ]
+  },
+  "ui: lk-ui-dropdown-language": {
+    "prefix": "lk-ui-dropdown-language",
+    "description": "Use for language selection, difficulty, or any enum-style setting. Dropdown collapses to a single line when closed — good for dense settings menus where screen space is limited.",
+    "scope": "lua",
+    "body": [
+      "local ${1:langs} = { \"English\", \"Polish\", \"German\", \"French\", \"Japanese\" }",
+      "-- NOTE: newDropdown is not yet in the API; use newComboBox when available",
+      "-- or implement with newPanel + newButton per option.",
+      "local lang_idx = 1",
+      "local function set_language(idx)",
+      "    lang_idx = idx",
+      "    print(\"language=\" .. langs[idx] .. \" idx=\" .. idx)",
+      "    -- reload locale strings",
+      "end",
+      "set_language(2)",
+      "print(\"selected idx=\" .. lang_idx)"
+    ]
+  },
+  "ui: lk-ui-progress-bar": {
+    "prefix": "lk-ui-progress-bar",
+    "description": "Use for loading screens, ability charge bars, and health or XP indicators. setValue drives the fill fraction; update the label text in sync to avoid separate string-update overhead.",
+    "scope": "lua",
+    "body": [
+      "local ${1:bar} = lurek.ui.newProgressBar(0, 100)",
+      "bar:setPosition(200, 360)",
+      "bar:setSize(400, 28)",
+      "bar:setValue(35)",
+      "",
+      "local pct_lbl = lurek.ui.newLabel(\"35%\")",
+      "pct_lbl:setPosition(200, 392)",
+      "pct_lbl:setSize(400, 20)",
+      "",
+      "local function set_progress(v)",
+      "    bar:setValue(v)",
+      "    pct_lbl:setText(string.format(\"%.0f%%\", v))",
+      "end",
+      "",
+      "set_progress(72)",
+      "print(\"progress=\" .. bar:getValue())"
+    ]
+  },
+  "ui: lk-ui-hit-test-tooltip": {
+    "prefix": "lk-ui-hit-test-tooltip",
+    "description": "Use to show a custom tooltip when the cursor is over a widget. containsPoint maps mouse coords to widget bounds — works even for widgets not in the registered UI tree (e.g. custom-drawn items).",
+    "scope": "lua",
+    "body": [
+      "local mx, my = lurek.input.mouse.getPosition()",
+      "",
+      "local ${1:tooltip_target} = lurek.ui.newButton(\"Skill: Fireball\")",
+      "tooltip_target:setPosition(50, 400)",
+      "tooltip_target:setSize(120, 40)",
+      "tooltip_target:setTooltip(\"Deals 3d6 fire damage in a 2-tile radius\")",
+      "",
+      "if tooltip_target:containsPoint(mx, my) then",
+      "    local tip = tooltip_target:getTooltip()",
+      "    lurek.render.setColor(0, 0, 0, 0.85)",
+      "    lurek.render.rectangle(\"fill\", mx + 12, my - 28, 260, 24)",
+      "    lurek.render.setColor(1, 1, 0.8, 1)",
+      "    lurek.render.print(tip, mx + 16, my - 24)",
+      "    lurek.render.setColor(1, 1, 1, 1)",
+      "end"
+    ]
+  },
+  "ui: lk-ui-z-order-modal": {
+    "prefix": "lk-ui-z-order-modal",
+    "description": "Use to guarantee a modal dialog always draws above all other widgets. setZOrder with a very high value (e.g. 1000) ensures it renders last, regardless of creation order.",
+    "scope": "lua",
+    "body": [
+      "local ${1:backdrop} = lurek.ui.newPanel()",
+      "backdrop:setPosition(0, 0)",
+      "backdrop:setSize(800, 600)",
+      "backdrop:setAlpha(0.6)",
+      "backdrop:setZOrder(999)",
+      "",
+      "local modal = lurek.ui.newPanel()",
+      "modal:setPosition(200, 180)",
+      "modal:setSize(400, 240)",
+      "modal:setZOrder(1000)",
+      "modal:addChild(lurek.ui.newLabel(\"Are you sure?\"))",
+      "",
+      "print(\"modal z=\" .. modal:getZOrder())",
+      "print(\"total widgets=\" .. lurek.ui.getWidgetCount())"
+    ]
+  }
+}

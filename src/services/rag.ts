@@ -4,7 +4,13 @@ import * as os from "os";
 import * as path from "path";
 import { loadRagContract } from "./ragContract.js";
 
-const PYTHON_EXECUTABLE = process.env.LUREK_PYTHON || process.env.PYTHON || "python";
+function resolvePythonExecutable(workspaceRoot: string): string {
+  if (process.env.LUREK_PYTHON || process.env.PYTHON) {
+    return process.env.LUREK_PYTHON || process.env.PYTHON || "python";
+  }
+  const repoLauncher = path.join(workspaceRoot, "tools", "python.cmd");
+  return process.platform === "win32" && fs.existsSync(repoLauncher) ? repoLauncher : "python";
+}
 const QUERY_SCRIPT = "tools/rag/query.py";
 const BUILD_SCRIPT = "tools/rag/build_index.py";
 export const DEFAULT_RAG_SEARCH_TIMEOUT_MS = 15_000;
@@ -59,7 +65,7 @@ function execRagCommand(
 
   return new Promise((resolve) => {
     child_process.execFile(
-      PYTHON_EXECUTABLE,
+      resolvePythonExecutable(workspaceRoot),
       command,
       {
         cwd: workspaceRoot,

@@ -124,7 +124,10 @@ function toRagTargets(value: unknown, fieldName: string): string[] {
     }
     const normalized = item.trim();
     if (normalized) {
-      result.push(normalized);
+      if (path.isAbsolute(normalized) || normalized.split(/[\\/]/).some((part) => part === "." || part === ".." || !part)) {
+        throw new Error(`'${fieldName}' entries must be repository-relative paths without traversal.`);
+      }
+      result.push(normalized.replace(/\\/g, "/"));
     }
   }
   return result;
@@ -391,6 +394,9 @@ export function handleRunExample(
     }
 
     const exampleName = name.endsWith(".lua") ? name : `${name}.lua`;
+    if (!/^[A-Za-z0-9][A-Za-z0-9_-]*\.lua$/.test(exampleName)) {
+      return "Error: example name must be a single Lua filename using letters, digits, underscores, or hyphens.";
+    }
     const examplePath = path.join(workspaceRoot, "content", "examples", exampleName);
     if (!fs.existsSync(examplePath)) {
       const available = listExampleFiles(workspaceRoot);
@@ -470,8 +476,8 @@ export function handleRunLuaTest(
     }
 
     // Prevent path traversal
-    const resolved = path.resolve(workspaceRoot, file);
-    if (!resolved.startsWith(workspaceRoot)) {
+    const resolved = resolveWorkspacePath(workspaceRoot, file);
+    if (!resolved) {
       return "Error: file path must be within the workspace.";
     }
 
@@ -507,7 +513,11 @@ export function handleGetLogs(
   workspaceRoot: string
 ): ToolHandler {
   return async (args) => {
-    const lines = (args.lines as number) || 50;
+    const requested = args.lines ?? 50;
+    if (typeof requested !== "number" || !Number.isInteger(requested) || requested < 1 || requested > 500) {
+      return "Error: `lines` must be an integer between 1 and 500.";
+    }
+    const lines = requested;
 
     // Check common log file locations
     const logPaths = [
@@ -746,8 +756,8 @@ export function handleInspectLuaFile(
     }
 
     // Prevent path traversal
-    const resolved = path.resolve(workspaceRoot, filePath);
-    if (!resolved.startsWith(workspaceRoot)) {
+    const resolved = resolveWorkspacePath(workspaceRoot, filePath);
+    if (!resolved) {
       return "Error: file path must be within the workspace.";
     }
 
@@ -1015,8 +1025,22 @@ function collectFiles(dir: string, baseDir: string, maxDepth = 5): string[] {
 
 function resolveExtensionApiDataPath(workspaceRoot: string): string {
   const candidates = [
+    path.join(workspaceRoot, "lurek_2d_extension", "data", "lurek-api.json"),
     path.join(workspaceRoot, "extension", "vscode", "data", "lurek-api.json"),
     path.join(workspaceRoot, "extensions", "vscode", "data", "lurek-api.json"),
   ];
   return candidates.find((candidate) => fs.existsSync(candidate)) ?? candidates[0];
+}
+
+function resolveWorkspacePath(workspaceRoot: string, candidate: string): string | undefined {
+  if (path.isAbsolute(candidate)) {
+    return undefined;
+  }
+  const root = path.resolve(workspaceRoot);
+  const resolved = path.resolve(root, candidate);
+  const relative = path.relative(root, resolved);
+  if (relative === "" || relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+    return undefined;
+  }
+  return resolved;
 }

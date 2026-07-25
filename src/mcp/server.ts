@@ -4,12 +4,14 @@ import * as fs from "fs";
 import * as path from "path";
 import * as readline from "readline";
 
+const MAX_TOOL_OUTPUT_CHARS = 32_000;
+
 /**
  * JSON-RPC request structure used by the MCP protocol.
  */
 interface JsonRpcRequest {
   jsonrpc: "2.0";
-  id: number | string;
+  id?: number | string | null;
   method: string;
   params?: Record<string, unknown>;
 }
@@ -19,7 +21,7 @@ interface JsonRpcRequest {
  */
 interface JsonRpcResponse {
   jsonrpc: "2.0";
-  id: number | string;
+  id: number | string | null;
   result?: unknown;
   error?: { code: number; message: string; data?: unknown };
 }
@@ -40,7 +42,9 @@ export function startMcpServer(workspaceRoot: string): { kill: () => void } {
   // For the extension, we expose a function that can be called
   // by VS Code's MCP integration.
 
-  return { kill: () => {} };
+  throw new Error(
+    `MCP stdio is launched by the client; use dist/mcp/server.js with --workspace ${workspaceRoot}.`,
+  );
 }
 
 /**
@@ -81,7 +85,13 @@ export function runStdioServer(workspaceRoot: string): void {
     }
 
     handleRequest(request, tools, toolDefs).then((response) => {
-      writeResponse(response);
+      if (response) {
+        writeResponse(response);
+      }
+    }).catch(() => {
+      if (request.id !== undefined) {
+        writeResponse({ jsonrpc: "2.0", id: request.id ?? null, error: { code: -32603, message: "Internal server error" } });
+      }
     });
   });
 }
@@ -101,14 +111,25 @@ async function handleRequest(
   request: JsonRpcRequest,
   tools: Map<string, ToolHandler>,
   toolDefs: ToolDefinition[]
-): Promise<JsonRpcResponse> {
+): Promise<JsonRpcResponse | null> {
   const { id, method, params } = request;
+  const responseId = id ?? null;
+  const isNotification = id === undefined;
+  if (params !== undefined && (typeof params !== "object" || params === null || Array.isArray(params))) {
+    return isNotification ? null : { jsonrpc: "2.0", id: responseId, error: { code: -32602, message: "`params` must be an object." } };
+  }
 
   switch (method) {
     case "initialize":
+      if (typeof params?.protocolVersion !== "string") {
+        return { jsonrpc: "2.0", id: responseId, error: { code: -32602, message: "`protocolVersion` is required." } };
+      }
+      if (params.protocolVersion !== "2024-11-05") {
+        return { jsonrpc: "2.0", id: responseId, error: { code: -32602, message: "Unsupported protocol version" } };
+      }
       return {
         jsonrpc: "2.0",
-        id,
+        id: responseId,
         result: {
           protocolVersion: "2024-11-05",
           capabilities: { tools: {} },
@@ -121,30 +142,36 @@ async function handleRequest(
 
     case "notifications/initialized":
       // Acknowledgement — no response needed, but send one if id exists
-      return { jsonrpc: "2.0", id, result: {} };
+      return null;
 
     case "tools/list":
       return {
         jsonrpc: "2.0",
-        id,
+        id: responseId,
         result: {
           tools: toolDefs,
         },
       };
 
     case "tools/call": {
-      const toolName = (params as Record<string, unknown>)?.name as string;
+      const toolName = params?.name;
       const toolArgs =
         ((params as Record<string, unknown>)?.arguments as Record<
           string,
           unknown
         >) ?? {};
 
+      if (typeof toolName !== "string") {
+        return { jsonrpc: "2.0", id: responseId, error: { code: -32602, message: "`name` is required." } };
+      }
+      if (toolArgs === null || Array.isArray(toolArgs) || typeof toolArgs !== "object") {
+        return { jsonrpc: "2.0", id: responseId, error: { code: -32602, message: "`arguments` must be an object." } };
+      }
       const handler = tools.get(toolName);
       if (!handler) {
         return {
           jsonrpc: "2.0",
-          id,
+          id: responseId,
           error: {
             code: -32601,
             message: `Unknown tool: ${toolName}`,
@@ -154,17 +181,21 @@ async function handleRequest(
 
       try {
         const result = await handler(toolArgs);
+        const capped = result.length > MAX_TOOL_OUTPUT_CHARS
+          ? `${result.slice(0, MAX_TOOL_OUTPUT_CHARS)}\n… truncated ${result.length - MAX_TOOL_OUTPUT_CHARS} character(s)`
+          : result;
         return {
           jsonrpc: "2.0",
-          id,
+          id: responseId,
           result: {
-            content: [{ type: "text", text: result }],
+            content: [{ type: "text", text: capped }],
+            ...(result.startsWith("Error:") ? { isError: true } : {}),
           },
         };
       } catch (err) {
         return {
           jsonrpc: "2.0",
-          id,
+          id: responseId,
           result: {
             content: [
               {
@@ -181,7 +212,7 @@ async function handleRequest(
     default:
       return {
         jsonrpc: "2.0",
-        id,
+        id: responseId,
         error: {
           code: -32601,
           message: `Method not found: ${method}`,

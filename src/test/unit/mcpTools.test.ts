@@ -126,6 +126,13 @@ suite("MCP Tools - RAG input validation", () => {
     assert.ok(result.includes("Error"));
     assert.ok(result.includes("targets"));
   });
+
+  test("ragBuildIndex rejects traversal targets before invoking tooling", async () => {
+    const result = await handleRagBuildIndex(WORKSPACE_ROOT)({ targets: ["../outside"] });
+
+    assert.ok(result.includes("Error"));
+    assert.ok(result.includes("traversal"));
+  });
 });
 
 suite("MCP Tools - lurek2d.getModuleInfo", () => {

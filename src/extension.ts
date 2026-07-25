@@ -3,7 +3,6 @@ import * as path from "path";
 import * as fs from "fs";
 import { execFile } from "child_process";
 import { promisify } from "util";
-import { startMcpServer } from "./mcp/server.js";
 
 // Services
 import { LurekProcessService } from "./services/lurekProcess.js";
@@ -99,9 +98,6 @@ import {
   buildRustFanoutCommand,
   buildTestTargetCommand,
 } from "./services/parallelCargo.js";
-
-/** MCP server handle. */
-let mcpProcess: ReturnType<typeof startMcpServer> | undefined;
 
 /** Shared services. */
 let lurekProcess: LurekProcessService;
@@ -683,8 +679,11 @@ window.addEventListener('resize',draw);
     vscode.window.showInformationMessage("Copy this configuration to your MCP client settings.");
   });
   registerCommand(context, "lurek.mcp.status", () => {
+    const entry = path.join(context.extensionPath, "dist", "mcp", "server.js");
     vscode.window.showInformationMessage(
-      mcpProcess ? "MCP server is running." : "MCP server is not running."
+      fs.existsSync(entry)
+        ? "MCP server is packaged and runs when your MCP client launches it."
+        : "MCP server entry is missing. Run the extension build first."
     );
   });
 
@@ -1041,9 +1040,6 @@ window.addEventListener('resize',draw);
 
   // ─── MCP Server ──────────────────────────────────────────
   const workspaceRoot = getWorkspaceRoot();
-  if (workspaceRoot) {
-    mcpProcess = startMcpServer(workspaceRoot);
-  }
 
   // ─── RAG Auto-Indexing & Panel ───────────────────────────
   const { RagPanel } = require("./panels/ragPanel.js");
@@ -1056,7 +1052,7 @@ window.addEventListener('resize',draw);
   if (workspaceRoot) {
     const ragContract = getRagContract(workspaceRoot);
     const RAG_WATCH_EXTENSIONS = ragContract.watch.extensions;
-    const RAG_WATCH_PREFIXES = new Set(ragContract.watch.prefixes);
+    const RAG_WATCH_PREFIXES = ragContract.watch.prefixes.map((prefix: string) => prefix.replace(/\\/g, "/").replace(/\/$/, ""));
     const RAG_WATCH_DEBOUNCE_MS = 500;
     const pendingRagTargets = new Set<string>();
     let ragWatchTimer: ReturnType<typeof setTimeout> | undefined;
@@ -1067,11 +1063,14 @@ window.addEventListener('resize',draw);
       if (!relativePath || relativePath.includes("..")) {
         return undefined;
       }
-      const topLevel = relativePath.split("/")[0];
-      if (!RAG_WATCH_PREFIXES.has(topLevel)) {
+      const isApiSource = relativePath === "logs/data/lua_api_data.json";
+      const matchesPrefix = RAG_WATCH_PREFIXES.some((prefix: string) =>
+        relativePath === prefix || relativePath.startsWith(`${prefix}/`),
+      );
+      if (!isApiSource && !matchesPrefix) {
         return undefined;
       }
-      if (topLevel === "AGENTS.md") {
+      if (relativePath === "AGENTS.md" || isApiSource) {
         return relativePath;
       }
       const normalized = relativePath.replace(/\\/g, "/");
@@ -1135,6 +1134,16 @@ window.addEventListener('resize',draw);
       ragWatcher.onDidDelete(queueRagIndex),
       ragWatcher
     );
+
+    // Synchronize changes made while the extension host was not running.
+    for (const target of ragContract.indexing.defaultTargetDirs) {
+      pendingRagTargets.add(target);
+    }
+    const apiDataTarget = path.join(workspaceRoot, "logs", "data", "lua_api_data.json");
+    if (fs.existsSync(apiDataTarget)) {
+      pendingRagTargets.add("logs/data/lua_api_data.json");
+    }
+    ragWatchTimer = setTimeout(() => { void runQueuedRagIndex(); }, RAG_WATCH_DEBOUNCE_MS);
   }
 
   // ─── Lua Language Server Integration ──────────────────
@@ -1162,12 +1171,7 @@ window.addEventListener('resize',draw);
 /**
  * Deactivates the extension.
  */
-export function deactivate(): void {
-  if (mcpProcess) {
-    mcpProcess.kill();
-    mcpProcess = undefined;
-  }
-}
+export function deactivate(): void {}
 
 /** Helper to register a command and push to subscriptions. */
 function registerCommand(

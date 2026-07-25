@@ -16,18 +16,16 @@ const DEFAULT_WATCH_EXTENSIONS = [
 ];
 const DEFAULT_WATCH_PREFIXES = [
   "AGENTS.md",
-  ".agents",
   ".codex",
-  ".github",
   "content",
   "docs",
-  "extension",
-  "ideas",
-  "library",
-  "pages",
   "src",
   "tests",
   "tools",
+  "lurek_2d_content",
+  "lurek_2d_extension",
+  "lurek_2d_workbench",
+  "lurek_2d_pages/AGENTS.md",
 ];
 const DEFAULT_INDEXING_ALLOWED_EXTENSIONS = [
   ".md",
@@ -44,18 +42,16 @@ const DEFAULT_INDEXING_ALLOWED_EXTENSIONS = [
 ];
 const DEFAULT_INDEXING_TARGET_DIRS = [
   "AGENTS.md",
-  ".agents",
   ".codex",
-  ".github",
   "content",
   "docs",
-  "extension",
-  "ideas",
-  "library",
-  "pages",
   "src",
   "tests",
   "tools",
+  "lurek_2d_content",
+  "lurek_2d_extension",
+  "lurek_2d_workbench",
+  "lurek_2d_pages/AGENTS.md",
 ];
 
 function cloneRagContract(template: RagContract): RagContract {

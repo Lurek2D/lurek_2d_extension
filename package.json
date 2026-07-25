@@ -1268,7 +1268,7 @@
     "test": "node esbuild.config.mjs --test && node ./dist/test/runTest.js",
     "lint": "eslint src --ext ts",
     "generate-api": "npx tsx tools/generate-api-data.ts",
-    "generate-snippets": "python ../../tools/snippets/gen_vscode_snippets.py",
+    "generate-snippets": "..\\tools\\python.cmd ..\\tools\\snippets\\gen_vscode_snippets.py",
     "generate-luacats": "npx tsx tools/generate-luacats.ts",
     "generate-all": "npm run generate-api && npm run generate-snippets && npm run generate-luacats",
     "package": "npx @vscode/vsce package --no-dependencies --allow-missing-repository"

@@ -1,6 +1,6 @@
 {
   "version": "auto-generated",
-  "generated": "2026-07-24",
+  "generated": "2026-07-25",
   "modules": [
     {
       "name": "agent",
@@ -12502,6 +12502,78 @@
           "objectType": null
         },
         {
+          "name": "wasPressed",
+          "fullPath": "lurek.input.keyboard.wasPressed",
+          "signature": "(key)",
+          "description": "Returns whether a logical key transitioned to pressed this frame.",
+          "parameters": [
+            {
+              "name": "key",
+              "type": "string",
+              "description": "Logical key name.",
+              "optional": false
+            }
+          ],
+          "returns": "boolean",
+          "returnType": "boolean",
+          "isMethod": false,
+          "objectType": null
+        },
+        {
+          "name": "wasReleased",
+          "fullPath": "lurek.input.keyboard.wasReleased",
+          "signature": "(key)",
+          "description": "Returns whether a logical key transitioned to released this frame.",
+          "parameters": [
+            {
+              "name": "key",
+              "type": "string",
+              "description": "Logical key name.",
+              "optional": false
+            }
+          ],
+          "returns": "boolean",
+          "returnType": "boolean",
+          "isMethod": false,
+          "objectType": null
+        },
+        {
+          "name": "wasScancodePressed",
+          "fullPath": "lurek.input.keyboard.wasScancodePressed",
+          "signature": "(scancode)",
+          "description": "Returns whether a physical keyboard scancode transitioned to pressed this frame.",
+          "parameters": [
+            {
+              "name": "scancode",
+              "type": "string",
+              "description": "Physical scancode name.",
+              "optional": false
+            }
+          ],
+          "returns": "boolean",
+          "returnType": "boolean",
+          "isMethod": false,
+          "objectType": null
+        },
+        {
+          "name": "wasScancodeReleased",
+          "fullPath": "lurek.input.keyboard.wasScancodeReleased",
+          "signature": "(scancode)",
+          "description": "Returns whether a physical keyboard scancode transitioned to released this frame.",
+          "parameters": [
+            {
+              "name": "scancode",
+              "type": "string",
+              "description": "Physical scancode name.",
+              "optional": false
+            }
+          ],
+          "returns": "boolean",
+          "returnType": "boolean",
+          "isMethod": false,
+          "objectType": null
+        },
+        {
           "name": "setKeyRepeat",
           "fullPath": "lurek.input.keyboard.setKeyRepeat",
           "signature": "(enabled)",
@@ -12556,6 +12628,17 @@
           "parameters": [],
           "returns": "boolean",
           "returnType": "boolean",
+          "isMethod": false,
+          "objectType": null
+        },
+        {
+          "name": "getTextInput",
+          "fullPath": "lurek.input.keyboard.getTextInput",
+          "signature": "()",
+          "description": "Returns committed text segments received during the current frame.",
+          "parameters": [],
+          "returns": "string[]",
+          "returnType": "string[]",
           "isMethod": false,
           "objectType": null
         },
@@ -12661,6 +12744,53 @@
           ],
           "returns": "boolean",
           "returnType": "boolean",
+          "isMethod": false,
+          "objectType": null
+        },
+        {
+          "name": "wasPressed",
+          "fullPath": "lurek.input.mouse.wasPressed",
+          "signature": "(button)",
+          "description": "Returns whether a one-based mouse button index transitioned to pressed this frame.",
+          "parameters": [
+            {
+              "name": "button",
+              "type": "integer",
+              "description": "One-based mouse button index.",
+              "optional": false
+            }
+          ],
+          "returns": "boolean",
+          "returnType": "boolean",
+          "isMethod": false,
+          "objectType": null
+        },
+        {
+          "name": "wasReleased",
+          "fullPath": "lurek.input.mouse.wasReleased",
+          "signature": "(button)",
+          "description": "Returns whether a one-based mouse button index transitioned to released this frame.",
+          "parameters": [
+            {
+              "name": "button",
+              "type": "integer",
+              "description": "One-based mouse button index.",
+              "optional": false
+            }
+          ],
+          "returns": "boolean",
+          "returnType": "boolean",
+          "isMethod": false,
+          "objectType": null
+        },
+        {
+          "name": "getDelta",
+          "fullPath": "lurek.input.mouse.getDelta",
+          "signature": "()",
+          "description": "Returns raw pointer movement accumulated during the current frame.",
+          "parameters": [],
+          "returns": "number",
+          "returnType": "number",
           "isMethod": false,
           "objectType": null
         },
@@ -13058,6 +13188,126 @@
           "objectType": null
         },
         {
+          "name": "getStandardButton",
+          "fullPath": "lurek.input.gamepad.getStandardButton",
+          "signature": "(id, name)",
+          "description": "Returns whether a standard named Xbox button is currently down.",
+          "parameters": [
+            {
+              "name": "id",
+              "type": "integer",
+              "description": "Gamepad id.",
+              "optional": false
+            },
+            {
+              "name": "name",
+              "type": "string",
+              "description": "Standard button name such as `a` or `dpad_up`.",
+              "optional": false
+            }
+          ],
+          "returns": "boolean",
+          "returnType": "boolean",
+          "isMethod": false,
+          "objectType": null
+        },
+        {
+          "name": "getStandardAxis",
+          "fullPath": "lurek.input.gamepad.getStandardAxis",
+          "signature": "(id, name)",
+          "description": "Returns a standard named Xbox axis value.",
+          "parameters": [
+            {
+              "name": "id",
+              "type": "integer",
+              "description": "Gamepad id.",
+              "optional": false
+            },
+            {
+              "name": "name",
+              "type": "string",
+              "description": "Standard axis name such as `leftx`.",
+              "optional": false
+            }
+          ],
+          "returns": "number",
+          "returnType": "number",
+          "isMethod": false,
+          "objectType": null
+        },
+        {
+          "name": "setDeadzone",
+          "fullPath": "lurek.input.gamepad.setDeadzone",
+          "signature": "(id, stick, value)",
+          "description": "Sets a per-gamepad deadzone for a named stick or axis group.",
+          "parameters": [
+            {
+              "name": "id",
+              "type": "integer",
+              "description": "Gamepad id.",
+              "optional": false
+            },
+            {
+              "name": "stick",
+              "type": "string",
+              "description": "Stick or axis group name.",
+              "optional": false
+            },
+            {
+              "name": "value",
+              "type": "number",
+              "description": "Deadzone clamped to the inclusive range 0.0..=1.0.",
+              "optional": false
+            }
+          ],
+          "returns": "nil",
+          "returnType": "nil",
+          "isMethod": false,
+          "objectType": null
+        },
+        {
+          "name": "getDeadzone",
+          "fullPath": "lurek.input.gamepad.getDeadzone",
+          "signature": "(id, stick)",
+          "description": "Returns a configured per-gamepad deadzone, defaulting to 0.0.",
+          "parameters": [
+            {
+              "name": "id",
+              "type": "integer",
+              "description": "Gamepad id.",
+              "optional": false
+            },
+            {
+              "name": "stick",
+              "type": "string",
+              "description": "Stick or axis group name.",
+              "optional": false
+            }
+          ],
+          "returns": "number",
+          "returnType": "number",
+          "isMethod": false,
+          "objectType": null
+        },
+        {
+          "name": "getAssignedPlayer",
+          "fullPath": "lurek.input.gamepad.getAssignedPlayer",
+          "signature": "(id)",
+          "description": "Returns the player assigned to a gamepad, or nil when unassigned.",
+          "parameters": [
+            {
+              "name": "id",
+              "type": "integer",
+              "description": "Gamepad id.",
+              "optional": false
+            }
+          ],
+          "returns": "integer",
+          "returnType": "integer",
+          "isMethod": false,
+          "objectType": null
+        },
+        {
           "name": "virtualDpad",
           "fullPath": "lurek.input.gamepad.virtualDpad",
           "signature": "(x, y, [deadzone])",
@@ -13411,6 +13661,48 @@
           "objectType": null
         },
         {
+          "name": "assignPlayer",
+          "fullPath": "lurek.input.assignPlayer",
+          "signature": "(player, gamepad_id)",
+          "description": "Assigns a gamepad slot to a positive player number.",
+          "parameters": [
+            {
+              "name": "player",
+              "type": "integer",
+              "description": "One-based player number.",
+              "optional": false
+            },
+            {
+              "name": "gamepad_id",
+              "type": "integer",
+              "description": "Gamepad slot id.",
+              "optional": false
+            }
+          ],
+          "returns": "nil",
+          "returnType": "nil",
+          "isMethod": false,
+          "objectType": null
+        },
+        {
+          "name": "getPlayerGamepad",
+          "fullPath": "lurek.input.getPlayerGamepad",
+          "signature": "(player)",
+          "description": "Returns the gamepad assigned to a player, or nil.",
+          "parameters": [
+            {
+              "name": "player",
+              "type": "integer",
+              "description": "One-based player number.",
+              "optional": false
+            }
+          ],
+          "returns": "integer",
+          "returnType": "integer",
+          "isMethod": false,
+          "objectType": null
+        },
+        {
           "name": "getTouches",
           "fullPath": "lurek.input.touch.getTouches",
           "signature": "()",
@@ -13496,6 +13788,48 @@
               "name": "id",
               "type": "integer",
               "description": "Touch id.",
+              "optional": false
+            }
+          ],
+          "returns": "boolean",
+          "returnType": "boolean",
+          "isMethod": false,
+          "objectType": null
+        },
+        {
+          "name": "setContextEnabled",
+          "fullPath": "lurek.input.setContextEnabled",
+          "signature": "(name, enabled)",
+          "description": "Enables or disables an action input context.",
+          "parameters": [
+            {
+              "name": "name",
+              "type": "string",
+              "description": "Context name.",
+              "optional": false
+            },
+            {
+              "name": "enabled",
+              "type": "boolean",
+              "description": "Whether actions in the context can be queried.",
+              "optional": false
+            }
+          ],
+          "returns": "nil",
+          "returnType": "nil",
+          "isMethod": false,
+          "objectType": null
+        },
+        {
+          "name": "isContextEnabled",
+          "fullPath": "lurek.input.isContextEnabled",
+          "signature": "(name)",
+          "description": "Returns whether an action input context is enabled.",
+          "parameters": [
+            {
+              "name": "name",
+              "type": "string",
+              "description": "Context name.",
               "optional": false
             }
           ],
@@ -13706,7 +14040,7 @@
         {
           "name": "define",
           "fullPath": "lurek.input.define",
-          "signature": "(name, keys, [cat])",
+          "signature": "(name, keys, [cat], [context])",
           "description": "Defines an action with a full set of bindings and an optional category, replacing any prior definition.",
           "parameters": [
             {
@@ -13725,6 +14059,12 @@
               "name": "category",
               "type": "string",
               "description": "Category label for grouping (default empty string).",
+              "optional": true
+            },
+            {
+              "name": "context",
+              "type": "any",
+              "description": "",
               "optional": true
             }
           ],
@@ -13960,9 +14300,16 @@
         {
           "name": "startPlayback",
           "fullPath": "lurek.input.startPlayback",
-          "signature": "()",
-          "description": "Starts playback of the loaded recording.",
-          "parameters": [],
+          "signature": "([opts])",
+          "description": "Starts playback of the loaded recording. `opts.mode` may be `frame`, `fixed`, or `realtime`.",
+          "parameters": [
+            {
+              "name": "opts",
+              "type": "any",
+              "description": "",
+              "optional": true
+            }
+          ],
           "returns": "nil",
           "returnType": "nil",
           "isMethod": false,
@@ -62386,6 +62733,57 @@
           "fullPath": "LCombo:reset",
           "signature": "()",
           "description": "Resets combo progress and elapsed time.",
+          "parameters": [],
+          "returns": "nil",
+          "returnType": "nil",
+          "isMethod": true,
+          "objectType": "LCombo"
+        },
+        {
+          "name": "update",
+          "fullPath": "LCombo:update",
+          "signature": "()",
+          "description": "Updates an automatic combo from normalized runtime input history.",
+          "parameters": [],
+          "returns": "boolean",
+          "returnType": "boolean",
+          "isMethod": true,
+          "objectType": "LCombo"
+        },
+        {
+          "name": "wasCompleted",
+          "fullPath": "LCombo:wasCompleted",
+          "signature": "()",
+          "description": "Returns whether the combo completed and has not been consumed.",
+          "parameters": [],
+          "returns": "boolean",
+          "returnType": "boolean",
+          "isMethod": true,
+          "objectType": "LCombo"
+        },
+        {
+          "name": "completedWithin",
+          "fullPath": "LCombo:completedWithin",
+          "signature": "(ms)",
+          "description": "Returns whether the combo completed within a recent millisecond window.",
+          "parameters": [
+            {
+              "name": "ms",
+              "type": "integer",
+              "description": "Inclusive age limit in milliseconds.",
+              "optional": false
+            }
+          ],
+          "returns": "boolean",
+          "returnType": "boolean",
+          "isMethod": true,
+          "objectType": "LCombo"
+        },
+        {
+          "name": "consume",
+          "fullPath": "LCombo:consume",
+          "signature": "()",
+          "description": "Marks the latest combo completion as consumed.",
           "parameters": [],
           "returns": "nil",
           "returnType": "nil",
@@ -209712,7 +210110,7 @@
     },
     {
       "name": "mousepressed",
-      "signature": "function lurek.mousepressed(x, y, button)",
+      "signature": "function lurek.mousepressed(x, y, button, clicks)",
       "description": "Called when a mouse button is pressed and UI did not consume it.",
       "parameters": [
         {
@@ -209732,12 +210130,18 @@
           "type": "integer",
           "description": "One-based mouse button index.",
           "optional": false
+        },
+        {
+          "name": "clicks",
+          "type": "integer",
+          "description": "Consecutive click count for this button.",
+          "optional": false
         }
       ]
     },
     {
       "name": "mousereleased",
-      "signature": "function lurek.mousereleased(x, y, button)",
+      "signature": "function lurek.mousereleased(x, y, button, clicks)",
       "description": "Called when a mouse button is released and UI did not consume it.",
       "parameters": [
         {
@@ -209756,6 +210160,12 @@
           "name": "button",
           "type": "integer",
           "description": "One-based mouse button index.",
+          "optional": false
+        },
+        {
+          "name": "clicks",
+          "type": "integer",
+          "description": "Consecutive click count for this button.",
           "optional": false
         }
       ]

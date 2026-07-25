@@ -28,6 +28,13 @@ const buildOptions = {
   logLevel: "info",
 };
 
+/** Standalone stdio MCP entry point used by configured MCP clients. */
+const mcpBuildOptions = {
+  ...buildOptions,
+  entryPoints: [path.join(rootDir, "src", "mcp", "server.ts")],
+  outfile: path.join(rootDir, "dist", "mcp", "server.js"),
+};
+
 /** @type {esbuild.BuildOptions} */
 const testOptions = {
   entryPoints: [
@@ -53,6 +60,7 @@ async function main() {
     console.log("[esbuild] Watching for changes...");
   } else {
     await esbuild.build(buildOptions);
+    await esbuild.build(mcpBuildOptions);
     if (process.argv.includes("--test")) {
       await esbuild.build(testOptions);
     }
